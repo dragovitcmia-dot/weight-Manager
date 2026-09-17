@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Weight Tracker</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Weight">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
 <style>
   :root {
     color-scheme: light dark;
@@ -207,9 +218,27 @@
     font-size: 13px; z-index: 100; opacity: 0; pointer-events: none; transition: opacity .2s;
   }
   .toast.show { opacity: 1; }
+  .update-banner {
+    display: none;
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--primary); color: var(--primary-text);
+    padding: 10px 16px; font-size: 13px;
+  }
+  .update-banner.show { display: flex; }
+  .update-banner button {
+    background: rgba(255,255,255,.2); color: var(--primary-text); border: none;
+    border-radius: 7px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
+
+<div class="update-banner" id="updateBanner">
+  <span>A new version is available.</span>
+  <button id="updateBtn">Refresh</button>
+</div>
 
 <header>
   <h1>⚖️ Weight Tracker</h1>
@@ -1028,11 +1057,46 @@
     renderAll();
   }
 
+  // ---------- PWA: service worker + update prompt ----------
+  function initServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+
+    navigator.serviceWorker.register("sw.js").then(function (reg) {
+      reg.addEventListener("updatefound", function () {
+        var newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener("statechange", function () {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            var banner = document.getElementById("updateBanner");
+            banner.classList.add("show");
+            document.body.style.paddingTop = banner.offsetHeight + "px";
+          }
+        });
+      });
+    }).catch(function () {
+      // offline on first load, or served from file:// — installability just won't kick in
+    });
+
+    var reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
+
+    document.getElementById("updateBtn").addEventListener("click", function () {
+      navigator.serviceWorker.getRegistration().then(function (reg) {
+        if (reg && reg.waiting) reg.waiting.postMessage("SKIP_WAITING");
+      });
+    });
+  }
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {
     init();
   }
+  initServiceWorker();
 })();
 </script>
 </body>
