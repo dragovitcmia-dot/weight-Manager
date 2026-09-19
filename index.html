@@ -196,6 +196,14 @@
   .field input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--primary); flex-shrink: 0; }
   .field-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
   .field-row label { font-size: 14px; color: var(--text); }
+  .lift-group { margin-bottom: 18px; }
+  .lift-group > label { font-weight: 600; display: block; margin-bottom: 8px; font-size: 14px; color: var(--text); }
+  .lift-row { display: flex; gap: 8px; }
+  .lift-row .field { flex: 1; margin-bottom: 0; }
+  .lift-row .field label { font-size: 11px; }
+  .benchmark-card { margin-bottom: 10px; }
+  .benchmark-card .bm-title { font-weight: 700; margin-bottom: 4px; }
+  .strength-status { font-size: 13px; color: var(--text-dim); margin-top: 8px; }
   .radio-group { display: flex; gap: 8px; }
   .radio-group label {
     flex: 1; text-align: center; padding: 10px; border-radius: 9px;
@@ -271,6 +279,9 @@
   <!-- Insight banners -->
   <div id="insights"></div>
 
+  <!-- Periodic benchmarks -->
+  <div id="benchmarksSection"></div>
+
   <!-- Dashboard -->
   <div class="card" id="dashboardCard">
     <div id="chartEmpty" class="empty">Log your first weight to see your trend.</div>
@@ -279,6 +290,15 @@
 
   <div class="card" id="statsCard" style="display:none;">
     <div class="stats-grid" id="statsGrid"></div>
+  </div>
+
+  <!-- Weekly strength check-in -->
+  <div class="card" id="strengthCard">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <h2 class="section-title" style="margin:0;">Weekly Lifts</h2>
+      <button id="logLiftsBtn" type="button" class="btn btn-secondary" style="width:auto; padding:8px 14px; font-size:13px;">Log this week</button>
+    </div>
+    <div class="strength-status" id="strengthWeekHint"></div>
   </div>
 
   <!-- History -->
@@ -326,6 +346,10 @@
         <label>Target rate (% of bodyweight per week)</label>
         <input type="number" step="0.1" min="0" id="onboardRate" placeholder="e.g. 0.7">
       </div>
+      <div class="field">
+        <label>Benchmark every N weeks — a bigger checkpoint that also looks at your lifts</label>
+        <input type="number" step="1" min="1" id="onboardBenchmarkFreq" placeholder="e.g. 4" value="4">
+      </div>
       <button type="submit" class="btn btn-primary">Start tracking</button>
     </form>
     <div class="skip-link"><button id="skipOnboarding" type="button">Skip for now</button></div>
@@ -363,6 +387,10 @@
       <div class="field">
         <label>Target rate (% of bodyweight per week)</label>
         <input type="number" step="0.1" min="0" id="goalRate">
+      </div>
+      <div class="field">
+        <label>Benchmark every N weeks</label>
+        <input type="number" step="1" min="1" id="goalBenchmarkFreq">
       </div>
       <div class="btn-row">
         <button type="submit" class="btn btn-primary">Save changes</button>
@@ -408,6 +436,42 @@
   </div>
 </div>
 
+<!-- Weekly strength modal -->
+<div class="modal-overlay hidden" id="strengthOverlay">
+  <div class="modal">
+    <button class="modal-close" id="closeStrength" aria-label="Close">×</button>
+    <h2>Log this week's lifts</h2>
+    <p class="hint" style="margin-bottom:16px;">Your best set for each lift this week. Added weight = extra weight only (0 if bodyweight-only). RIR = reps you had left in the tank (0 = to failure).</p>
+    <form id="strengthForm">
+      <div class="lift-group">
+        <label>Pull-ups</label>
+        <div class="lift-row">
+          <div class="field"><label>Reps</label><input type="number" min="0" step="1" id="pullupsReps"></div>
+          <div class="field"><label>Added wt (kg)</label><input type="number" min="0" step="0.5" id="pullupsWeight" value="0"></div>
+          <div class="field"><label>RIR</label><input type="number" min="0" step="1" id="pullupsRir"></div>
+        </div>
+      </div>
+      <div class="lift-group">
+        <label>Dips</label>
+        <div class="lift-row">
+          <div class="field"><label>Reps</label><input type="number" min="0" step="1" id="dipsReps"></div>
+          <div class="field"><label>Added wt (kg)</label><input type="number" min="0" step="0.5" id="dipsWeight" value="0"></div>
+          <div class="field"><label>RIR</label><input type="number" min="0" step="1" id="dipsRir"></div>
+        </div>
+      </div>
+      <div class="lift-group">
+        <label>Squats</label>
+        <div class="lift-row">
+          <div class="field"><label>Reps</label><input type="number" min="0" step="1" id="squatsReps"></div>
+          <div class="field"><label>Added wt (kg)</label><input type="number" min="0" step="0.5" id="squatsWeight" value="0"></div>
+          <div class="field"><label>RIR</label><input type="number" min="0" step="1" id="squatsRir"></div>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Save this week's lifts</button>
+    </form>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -426,7 +490,7 @@
   }
 
   function defaultState() {
-    return { entries: [], goals: [], activeGoalId: null, onboarded: false, reminder: defaultReminder() };
+    return { entries: [], goals: [], activeGoalId: null, onboarded: false, reminder: defaultReminder(), strengthEntries: [], benchmarks: [] };
   }
 
   function loadState() {
@@ -443,7 +507,9 @@
         onboarded: !!parsed.onboarded,
         reminder: r && typeof r === "object"
           ? { enabled: !!r.enabled, time: r.time || "09:00", lastNotifiedDate: r.lastNotifiedDate || null }
-          : defaultReminder()
+          : defaultReminder(),
+        strengthEntries: Array.isArray(parsed.strengthEntries) ? parsed.strengthEntries : [],
+        benchmarks: Array.isArray(parsed.benchmarks) ? parsed.benchmarks : []
       };
     } catch (e) {
       return defaultState();
@@ -501,6 +567,14 @@
     var d = parseISO(iso);
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
+  // Monday of the calendar week containing this date — used to key one strength entry per lift per week
+  function mondayOf(iso) {
+    var d = parseISO(iso);
+    var day = d.getDay(); // 0 = Sunday
+    var diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return toISO(d);
+  }
 
   // ---------- entries ----------
   function sortedEntries() {
@@ -525,6 +599,56 @@
   function firstEntryOnOrAfter(dateISO) {
     var entries = sortedEntries().filter(function (e) { return e.date >= dateISO; });
     return entries.length ? entries[0] : null;
+  }
+
+  // the logged weight closest to a given date, used to normalize strength scores by bodyweight
+  function bodyweightNear(dateISO) {
+    var entries = sortedEntries();
+    if (!entries.length) return null;
+    var before = null, after = null;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].date <= dateISO) before = entries[i];
+      if (entries[i].date >= dateISO && !after) after = entries[i];
+    }
+    if (before && after && before.date !== after.date) {
+      var db = daysBetween(before.date, dateISO);
+      var da = daysBetween(dateISO, after.date);
+      return db <= da ? before.weight : after.weight;
+    }
+    return before ? before.weight : (after ? after.weight : null);
+  }
+
+  // ---------- strength (weekly lift check-ins) ----------
+  var LIFTS = ["pullups", "dips", "squats"];
+  var LIFT_LABELS = { pullups: "Pull-ups", dips: "Dips", squats: "Squats" };
+
+  function getStrengthEntry(weekStart, lift) {
+    return state.strengthEntries.find(function (s) { return s.weekStart === weekStart && s.lift === lift; }) || null;
+  }
+
+  function upsertStrengthEntry(weekStart, lift, reps, weight, rir) {
+    var existing = getStrengthEntry(weekStart, lift);
+    if (existing) {
+      existing.reps = reps; existing.weight = weight; existing.rir = rir;
+    } else {
+      state.strengthEntries.push({ weekStart: weekStart, lift: lift, reps: reps, weight: weight, rir: rir });
+    }
+    saveState();
+  }
+
+  function sortedStrengthEntries(lift) {
+    return state.strengthEntries.filter(function (s) { return s.lift === lift; })
+      .slice().sort(function (a, b) { return a.weekStart < b.weekStart ? -1 : 1; });
+  }
+
+  // effective load: (bodyweight-at-that-week + added weight) x (reps + RIR). Using bodyweight
+  // instead of just added weight puts bodyweight and weighted variants of the same lift on one
+  // scale, and means pull-ups/dips automatically account for getting lighter on a cut.
+  function strengthScore(entry) {
+    if (!entry) return null;
+    var bw = bodyweightNear(entry.weekStart);
+    if (bw == null) return null;
+    return (bw + entry.weight) * (entry.reps + entry.rir);
   }
 
   // ---------- goals ----------
@@ -570,6 +694,125 @@
     // prefer the latest-starting matching period
     candidates.sort(function (a, b) { return a.startDate < b.startDate ? 1 : -1; });
     return candidates[0];
+  }
+
+  // ---------- benchmarks ----------
+  // Generic schedule: a checkpoint every N weeks after the goal starts, as long as it lands
+  // before the goal's own end date (the end date is the finish line, evaluated by the main
+  // stats — not a mid-course benchmark). Works for any duration/frequency combination without
+  // special-casing: a 6-week goal with a 4-week frequency naturally gets exactly one checkpoint,
+  // a 21-week goal gets five.
+  function benchmarkDatesForGoal(goal) {
+    var freq = goal.benchmarkFrequencyWeeks || 4;
+    var derived = computeGoalDerived(goal);
+    var dates = [];
+    var k = 1;
+    while (true) {
+      var d = addDays(goal.startDate, k * freq * 7);
+      if (d >= derived.endDate) break;
+      dates.push(d);
+      k++;
+    }
+    return dates;
+  }
+
+  function computeBenchmark(goal, index, benchmarkDate) {
+    var freqDays = (goal.benchmarkFrequencyWeeks || 4) * 7;
+    var windowBStart = addDays(benchmarkDate, -freqDays + 1);
+    var windowBEnd = benchmarkDate;
+    var windowAStart = addDays(benchmarkDate, -2 * freqDays + 1);
+    var windowAEnd = addDays(benchmarkDate, -freqDays);
+
+    var windowBEntries = sortedEntries().filter(function (e) { return e.date >= windowBStart && e.date <= windowBEnd; });
+
+    var derived = computeGoalDerived(goal);
+    var targetRate = derived.targetWeeklyKg;
+
+    var actualRate = null;
+    if (windowBEntries.length >= 2) {
+      var base = windowBEntries[0].date;
+      var pts = windowBEntries.map(function (e) { return { x: daysBetween(base, e.date), y: e.weight }; });
+      var reg = linreg(pts);
+      if (reg) actualRate = reg.slope * 7;
+    }
+
+    var paceRatio = (actualRate != null && targetRate) ? actualRate / targetRate : null;
+    var paceCategory = paceRatio == null ? null : (paceRatio < 0.75 ? "behind" : paceRatio <= 1.25 ? "on" : "ahead");
+
+    var perLift = {};
+    var trendPcts = [];
+    LIFTS.forEach(function (lift) {
+      var entries = sortedStrengthEntries(lift);
+      var bScores = entries.filter(function (s) { return s.weekStart >= windowBStart && s.weekStart <= windowBEnd; })
+        .map(strengthScore).filter(function (v) { return v != null; });
+      var aScores = entries.filter(function (s) { return s.weekStart >= windowAStart && s.weekStart <= windowAEnd; })
+        .map(strengthScore).filter(function (v) { return v != null; });
+      var avgB = bScores.length ? bScores.reduce(function (s, v) { return s + v; }, 0) / bScores.length : null;
+      var avgA = aScores.length ? aScores.reduce(function (s, v) { return s + v; }, 0) / aScores.length : null;
+      var pct = (avgB != null && avgA != null && avgA !== 0) ? (avgB - avgA) / avgA * 100 : null;
+      if (pct != null) trendPcts.push(pct);
+      perLift[lift] = { avgPrev: avgA, avgNow: avgB, pctChange: pct };
+    });
+
+    var strengthAvailable = trendPcts.length > 0;
+    var strengthTrendPct = strengthAvailable ? trendPcts.reduce(function (s, v) { return s + v; }, 0) / trendPcts.length : null;
+    var strengthDeclining = strengthAvailable && strengthTrendPct <= -8;
+
+    var verdict, note;
+    if (paceCategory == null) {
+      verdict = "Not enough data";
+      note = "Not enough weigh-ins logged in this window yet to compute a verdict.";
+    } else if (paceCategory === "behind") {
+      verdict = goal.type === "loss" ? "Eat less" : "Eat more";
+      note = goal.type === "loss"
+        ? "You lost slower than your target rate over this block — tighten the deficit a bit."
+        : "You gained slower than your target rate over this block — add a bit more food.";
+    } else if (paceCategory === "ahead") {
+      verdict = goal.type === "loss" ? "Eat more" : "Eat less";
+      note = goal.type === "loss"
+        ? "You lost faster than your target rate over this block — ease the deficit to protect muscle."
+        : "You gained faster than your target rate over this block — ease the surplus to limit fat gain.";
+      if (strengthDeclining) {
+        note += " Your lifts also trended down about " + Math.abs(strengthTrendPct).toFixed(0) + "% — that lines up with this, so it's likely not just water weight.";
+      }
+    } else if (strengthDeclining) {
+      verdict = "Reduce training volume";
+      note = "Your weight trend is right on target, so food is dosed correctly — but your lifts dropped about " +
+        Math.abs(strengthTrendPct).toFixed(0) + "% over this block. Ease training volume so recovery can catch up.";
+    } else if (strengthAvailable) {
+      verdict = "Hold steady";
+      note = "On target, and your lifts are holding. Keep doing exactly what you're doing.";
+    } else {
+      verdict = "Hold steady";
+      note = "On target for this block. Log your lifts weekly so future benchmarks can also check training volume.";
+    }
+
+    return {
+      goalId: goal.id, index: index, date: benchmarkDate,
+      windowBStart: windowBStart, windowBEnd: windowBEnd, windowAStart: windowAStart, windowAEnd: windowAEnd,
+      paceCategory: paceCategory, paceRatio: paceRatio, actualRate: actualRate, targetRate: targetRate,
+      strengthAvailable: strengthAvailable, strengthTrendPct: strengthTrendPct, perLift: perLift,
+      verdict: verdict, note: note, computedAt: todayISO()
+    };
+  }
+
+  // computes and caches any benchmark whose date has arrived and isn't already stored —
+  // once computed, a benchmark's verdict is frozen (based on data up to its window), like a
+  // real checkpoint, not a live-recalculating stat
+  function ensureBenchmarksComputed() {
+    var goal = getActiveGoal();
+    if (!goal) return;
+    var dates = benchmarkDatesForGoal(goal);
+    var today = todayISO();
+    var changed = false;
+    dates.forEach(function (d, i) {
+      if (d > today) return;
+      var already = state.benchmarks.some(function (b) { return b.goalId === goal.id && b.index === i + 1; });
+      if (already) return;
+      state.benchmarks.push(computeBenchmark(goal, i + 1, d));
+      changed = true;
+    });
+    if (changed) saveState();
   }
 
   // ---------- math ----------
@@ -631,6 +874,8 @@
     renderLogHint();
     renderDashboard();
     renderInsights();
+    renderBenchmarks();
+    renderStrengthCard();
     renderHistory();
   }
 
@@ -861,6 +1106,41 @@
     }).join("");
   }
 
+  function renderBenchmarks() {
+    var container = document.getElementById("benchmarksSection");
+    var goal = getActiveGoal();
+    if (!goal) { container.innerHTML = ""; return; }
+
+    ensureBenchmarksComputed();
+
+    var mine = state.benchmarks.filter(function (b) { return b.goalId === goal.id; })
+      .slice().sort(function (a, b) { return b.index - a.index; });
+    if (!mine.length) { container.innerHTML = ""; return; }
+
+    var freq = goal.benchmarkFrequencyWeeks || 4;
+    container.innerHTML = '<h2 class="section-title">Benchmarks</h2>' + mine.map(function (b) {
+      var cls = b.paceCategory == null ? "note"
+        : b.paceCategory === "behind" ? "behind"
+        : b.paceCategory === "ahead" ? "ahead"
+        : (b.strengthAvailable && b.strengthTrendPct <= -8 ? "note" : "ontarget");
+      return '<div class="insight benchmark-card ' + cls + '">' +
+        '<div class="bm-title">Week ' + (b.index * freq) + ' Benchmark — ' + b.verdict + '</div>' +
+        '<div>' + b.note + '</div>' +
+        '</div>';
+    }).join("");
+  }
+
+  function renderStrengthCard() {
+    var hint = document.getElementById("strengthWeekHint");
+    var wk = mondayOf(todayISO());
+    var loggedCount = LIFTS.filter(function (l) { return !!getStrengthEntry(wk, l); }).length;
+    hint.textContent = loggedCount === LIFTS.length
+      ? "Logged for this week ✓"
+      : loggedCount === 0
+        ? "Not logged yet this week."
+        : loggedCount + " of " + LIFTS.length + " lifts logged this week.";
+  }
+
   function renderHistory() {
     var entries = sortedEntries().slice().reverse(); // newest first
     var emptyEl = document.getElementById("historyEmpty");
@@ -938,6 +1218,7 @@
     document.getElementById("goalStartDate").value = goal ? goal.startDate : todayISO();
     document.getElementById("goalDuration").value = goal ? goal.durationWeeks : "";
     document.getElementById("goalRate").value = goal ? goal.targetRatePct : "";
+    document.getElementById("goalBenchmarkFreq").value = goal && goal.benchmarkFrequencyWeeks ? goal.benchmarkFrequencyWeeks : 4;
   }
 
   function setRadioGroup(groupId, name, value) {
@@ -1066,6 +1347,7 @@
       var startDate = document.getElementById("onboardStartDate").value || todayISO();
       var duration = parseInt(document.getElementById("onboardDuration").value, 10);
       var rate = parseFloat(document.getElementById("onboardRate").value);
+      var benchmarkFreq = parseInt(document.getElementById("onboardBenchmarkFreq").value, 10) || 4;
 
       if (!duration || duration < 1) { showToast("Enter a valid duration"); return; }
       if (!rate || rate < 0) { showToast("Enter a valid target rate"); return; }
@@ -1076,7 +1358,8 @@
         startWeight: startWeightRaw ? parseFloat(startWeightRaw) : null,
         startDate: startDate,
         durationWeeks: duration,
-        targetRatePct: rate
+        targetRatePct: rate,
+        benchmarkFrequencyWeeks: benchmarkFreq
       };
       state.goals.push(goal);
       state.activeGoalId = goal.id;
@@ -1095,6 +1378,7 @@
       var startDate = document.getElementById("goalStartDate").value || todayISO();
       var duration = parseInt(document.getElementById("goalDuration").value, 10);
       var rate = parseFloat(document.getElementById("goalRate").value);
+      var benchmarkFreq = parseInt(document.getElementById("goalBenchmarkFreq").value, 10) || 4;
 
       if (!duration || duration < 1) { showToast("Enter a valid duration"); return; }
       if (!rate || rate < 0) { showToast("Enter a valid target rate"); return; }
@@ -1109,6 +1393,7 @@
       goal.startDate = startDate;
       goal.durationWeeks = duration;
       goal.targetRatePct = rate;
+      goal.benchmarkFrequencyWeeks = benchmarkFreq;
       saveState();
       populateGoalForm();
       showToast("Goal updated");
@@ -1123,7 +1408,8 @@
         startWeight: null,
         startDate: todayISO(),
         durationWeeks: 12,
-        targetRatePct: 0.7
+        targetRatePct: 0.7,
+        benchmarkFrequencyWeeks: 4
       };
       state.goals.push(goal);
       state.activeGoalId = goal.id;
@@ -1181,6 +1467,40 @@
           else showToast("Notification permission denied");
         });
       }
+    });
+
+    document.getElementById("logLiftsBtn").addEventListener("click", function () {
+      var wk = mondayOf(todayISO());
+      LIFTS.forEach(function (lift) {
+        var e = getStrengthEntry(wk, lift);
+        document.getElementById(lift + "Reps").value = e ? e.reps : "";
+        document.getElementById(lift + "Weight").value = e ? e.weight : 0;
+        document.getElementById(lift + "Rir").value = e ? e.rir : "";
+      });
+      document.getElementById("strengthOverlay").classList.remove("hidden");
+    });
+
+    document.getElementById("closeStrength").addEventListener("click", function () {
+      document.getElementById("strengthOverlay").classList.add("hidden");
+    });
+
+    document.getElementById("strengthForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var wk = mondayOf(todayISO());
+      var anyValid = false;
+      LIFTS.forEach(function (lift) {
+        var reps = parseInt(document.getElementById(lift + "Reps").value, 10);
+        var weight = parseFloat(document.getElementById(lift + "Weight").value);
+        var rir = parseInt(document.getElementById(lift + "Rir").value, 10);
+        if (!isNaN(reps) && reps >= 0) {
+          upsertStrengthEntry(wk, lift, reps, isNaN(weight) ? 0 : weight, isNaN(rir) ? 0 : rir);
+          anyValid = true;
+        }
+      });
+      if (!anyValid) { showToast("Enter at least one lift"); return; }
+      document.getElementById("strengthOverlay").classList.add("hidden");
+      showToast("Lifts logged for this week");
+      renderAll();
     });
 
     document.getElementById("exportBtn").addEventListener("click", function () {
@@ -1250,7 +1570,9 @@
             onboarded: true,
             reminder: r && typeof r === "object"
               ? { enabled: !!r.enabled, time: r.time || "09:00", lastNotifiedDate: r.lastNotifiedDate || null }
-              : defaultReminder()
+              : defaultReminder(),
+            strengthEntries: Array.isArray(parsed.strengthEntries) ? parsed.strengthEntries : [],
+            benchmarks: Array.isArray(parsed.benchmarks) ? parsed.benchmarks : []
           };
           saveState();
           showToast("Data imported");

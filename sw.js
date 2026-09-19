@@ -1,4 +1,4 @@
-const CACHE_NAME = "weight-tracker-v2";
+const CACHE_NAME = "weight-tracker-v3";
 const META_DB_NAME = "weightTrackerMeta";
 const META_DB_STORE = "kv";
 
