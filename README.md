@@ -46,8 +46,7 @@ This is the part that crunches the numbers for you so you don't have to sit down
 - **Active goal**: edit your current goal's type, start weight, start date, duration, or target rate at any time.
 - **Start new goal period**: use this when you switch from cutting to bulking (or vice versa). Your history is kept — old entries keep their old tag, new entries get the new one, and the dashboard always evaluates against whichever goal is currently active.
 - **Reminders**: turn on "Remind me if I haven't logged today" and pick a time. You'll need to allow notifications when your browser asks.
-  - This is **reliable while the app is open** on your phone (it checks in the background of the tab and when you reopen the app).
-  - Delivery while the app is fully closed is **best-effort only** — it can work on Android/Chrome installed apps, but is **not supported on iPhone**. Don't rely on it as your only reminder; opening the app each morning is still the sure way to get pinged.
+  - **This only checks while the app is open** — it fires when you launch it or bring it back to the foreground. There is no true background push here (a static site with no server can't schedule anything while it's fully closed — nothing runs with no tab open, on any platform). Treat this as a nudge for when you do open the app, not a substitute for making logging part of your routine.
   - Use **Send test notification** to confirm notifications work on your device right now.
 - **Backup**:
   - **Export JSON** — full backup of everything (entries, goals, settings). Use this before switching phones or clearing browser data.
@@ -74,7 +73,7 @@ This is the part that crunches the numbers for you so you don't have to sit down
 |---|---|
 | Chart/stats say "—" or don't show | You need at least one logged entry. |
 | Insight banner isn't showing | It only appears once you have 14+ days of data within your *current* goal period. |
-| Notifications don't fire when the app is closed | Expected on iPhone (not supported) and best-effort elsewhere. Rely on opening the app, not the background notification. |
+| Notifications don't fire when the app is closed | Expected everywhere — this is a foreground-only check, there's no background push. It fires when you open the app or bring it back to the front. |
 | Lost my data after clearing browser storage | Only recoverable if you'd previously used Export JSON. Import that file in Settings. |
 | Update banner never appears | You're already on the latest version, or you're not connected to the internet when the check happens. |
 | No Benchmark card showing up | Benchmarks only appear once the scheduled date has passed (e.g. day 28 for a 4-week frequency) and you have weight entries in that window. |

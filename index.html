@@ -414,7 +414,7 @@
     <div class="btn-row">
       <button id="testNotificationBtn" class="btn btn-secondary" type="button">Send test notification</button>
     </div>
-    <p class="hint">Reliable while the app is open on this device. Background delivery when the app is closed is best-effort on Android Chrome and not supported on iPhone.</p>
+    <p class="hint">This only checks while the app is open — it fires when you launch it or bring it back to the foreground, not while it's closed in the background. There's no true background push here; make opening the app part of your routine rather than waiting on this.</p>
 
     <hr class="divider">
 
@@ -480,8 +480,6 @@
   "use strict";
 
   var STORAGE_KEY = "weightTracker.v1";
-  var META_DB_NAME = "weightTrackerMeta";
-  var META_DB_STORE = "kv";
   var chartInstance = null;
 
   // ---------- state ----------
@@ -518,31 +516,6 @@
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    mirrorMetaToIndexedDB();
-  }
-
-  // Mirrors just the two fields the service worker needs (it can't reach localStorage) into
-  // IndexedDB, so a periodic background sync can decide whether to notify without the page open.
-  function openMetaDB() {
-    return new Promise(function (resolve, reject) {
-      if (!("indexedDB" in window)) { reject(new Error("no indexedDB")); return; }
-      var req = indexedDB.open(META_DB_NAME, 1);
-      req.onupgradeneeded = function () { req.result.createObjectStore(META_DB_STORE); };
-      req.onsuccess = function () { resolve(req.result); };
-      req.onerror = function () { reject(req.error); };
-    });
-  }
-
-  function mirrorMetaToIndexedDB() {
-    openMetaDB().then(function (db) {
-      var tx = db.transaction(META_DB_STORE, "readwrite");
-      var store = tx.objectStore(META_DB_STORE);
-      store.put(state.reminder || defaultReminder(), "reminder");
-      var last = sortedEntries().slice(-1)[0];
-      store.put(last ? last.date : null, "lastLoggedDate");
-    }).catch(function () {
-      // best effort only — background reminders just won't fire if this isn't available
-    });
   }
 
   var state = loadState();
@@ -1276,19 +1249,6 @@
     saveState();
   }
 
-  function registerPeriodicSync() {
-    if (!("serviceWorker" in navigator) || !navigator.permissions || !navigator.permissions.query) return;
-    navigator.serviceWorker.ready.then(function (reg) {
-      if (!("periodicSync" in reg)) return;
-      navigator.permissions.query({ name: "periodic-background-sync" }).then(function (status) {
-        if (status.state !== "granted") return;
-        reg.periodicSync.register("daily-weight-reminder", { minInterval: 20 * 60 * 60 * 1000 }).catch(function () {});
-      }).catch(function () {
-        // browser doesn't support querying this permission — nothing more we can do
-      });
-    }).catch(function () {});
-  }
-
   // ---------- event wiring ----------
   function init() {
     wireRadioGroup("onboardGoalTypeGroup");
@@ -1442,7 +1402,6 @@
         state.reminder.enabled = true;
         state.reminder.time = document.getElementById("reminderTime").value || "09:00";
         saveState();
-        registerPeriodicSync();
         showToast("Daily reminder enabled");
         checkReminder();
       });
@@ -1595,7 +1554,6 @@
       renderAll();
     });
 
-    if (state.reminder && state.reminder.enabled) registerPeriodicSync();
     checkReminder();
     setInterval(checkReminder, 5 * 60 * 1000);
     document.addEventListener("visibilitychange", function () {
