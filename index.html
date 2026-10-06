@@ -79,8 +79,26 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  body { padding-bottom: 40px; }
+  body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
   .wrap { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+  .tab-panel.hidden { display: none; }
+  .bottom-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 150;
+    display: flex; background: var(--card); border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom);
+    max-width: 640px; margin: 0 auto;
+  }
+  .bottom-nav button {
+    flex: 1; background: none; border: none; padding: 9px 0 7px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-size: 11px; font-weight: 600; color: var(--text-dim);
+  }
+  .bottom-nav button .nav-icon { font-size: 19px; line-height: 1; }
+  .bottom-nav button.active { color: var(--primary); }
+  .live-badge {
+    display: inline-block; background: var(--danger); color: #fff; font-size: 10px; font-weight: 800;
+    padding: 2px 6px; border-radius: 4px; margin-right: 8px; letter-spacing: .04em; vertical-align: middle;
+  }
   header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 16px;
@@ -168,7 +186,7 @@
   .modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,.5);
     display: flex; align-items: flex-end; justify-content: center;
-    z-index: 50;
+    z-index: 170;
   }
   .modal-overlay.hidden { display: none; }
   .modal {
@@ -224,9 +242,9 @@
   #fileImport { display: none; }
   .goal-summary { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
   .toast {
-    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    position: fixed; bottom: calc(66px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
     background: var(--text); color: var(--bg); padding: 9px 10px 9px 16px; border-radius: 999px;
-    font-size: 13px; z-index: 100; opacity: 0; pointer-events: none; transition: opacity .2s;
+    font-size: 13px; z-index: 160; opacity: 0; pointer-events: none; transition: opacity .2s;
     display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px);
   }
   .toast.show { opacity: 1; pointer-events: auto; }
@@ -263,58 +281,85 @@
 
 <div class="wrap">
 
-  <!-- Primary action: log today's weight -->
-  <div class="card log-card">
-    <div class="log-row">
-      <input type="number" id="weightInput" inputmode="decimal" step="0.1" placeholder="Weight (kg)">
-      <button id="logBtn">Log</button>
+  <!-- ===== Log tab ===== -->
+  <div class="tab-panel" id="tabLog">
+
+    <!-- Primary action: log today's weight -->
+    <div class="card log-card">
+      <div class="log-row">
+        <input type="number" id="weightInput" inputmode="decimal" step="0.1" placeholder="Weight (kg)">
+        <button id="logBtn">Log</button>
+      </div>
+      <div class="log-meta">
+        <button id="toggleDateBtn" type="button">Log for a different date</button>
+        <input type="date" id="dateInput" style="display:none;">
+      </div>
+      <div class="hint" id="logHint"></div>
     </div>
-    <div class="log-meta">
-      <button id="toggleDateBtn" type="button">Log for a different date</button>
-      <input type="date" id="dateInput" style="display:none;">
+
+    <!-- Insight banners -->
+    <div id="insights"></div>
+
+    <!-- Dashboard -->
+    <div class="card" id="dashboardCard">
+      <div id="chartEmpty" class="empty">Log your first weight to see your trend.</div>
+      <canvas id="chart" style="display:none;"></canvas>
     </div>
-    <div class="hint" id="logHint"></div>
-  </div>
 
-  <!-- Insight banners -->
-  <div id="insights"></div>
-
-  <!-- Periodic benchmarks -->
-  <div id="benchmarksSection"></div>
-
-  <!-- Dashboard -->
-  <div class="card" id="dashboardCard">
-    <div id="chartEmpty" class="empty">Log your first weight to see your trend.</div>
-    <canvas id="chart" style="display:none;"></canvas>
-  </div>
-
-  <div class="card" id="statsCard" style="display:none;">
-    <div class="stats-grid" id="statsGrid"></div>
-  </div>
-
-  <!-- Weekly strength check-in -->
-  <div class="card" id="strengthCard">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-      <h2 class="section-title" style="margin:0;">Weekly Lifts</h2>
-      <button id="logLiftsBtn" type="button" class="btn btn-secondary" style="width:auto; padding:8px 14px; font-size:13px;">Log this week</button>
+    <div class="card" id="statsCard" style="display:none;">
+      <div class="stats-grid" id="statsGrid"></div>
     </div>
-    <div class="strength-status" id="strengthWeekHint"></div>
-  </div>
 
-  <!-- History -->
-  <div class="card">
-    <h2 class="section-title">History</h2>
-    <div id="historyEmpty" class="empty">No entries yet.</div>
-    <div class="history-scroll">
-      <table class="history" id="historyTable" style="display:none;">
-        <thead>
-          <tr><th>Date</th><th>Weight</th><th>Change</th><th></th><th></th></tr>
-        </thead>
-        <tbody id="historyBody"></tbody>
-      </table>
+    <!-- History -->
+    <div class="card">
+      <h2 class="section-title">History</h2>
+      <div id="historyEmpty" class="empty">No entries yet.</div>
+      <div class="history-scroll">
+        <table class="history" id="historyTable" style="display:none;">
+          <thead>
+            <tr><th>Date</th><th>Weight</th><th>Change</th><th></th><th></th></tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
     </div>
+
   </div>
 
+  <!-- ===== Coach tab ===== -->
+  <div class="tab-panel hidden" id="tabCoach">
+
+    <!-- Live, continuously-recalculated status — no 14-day or benchmark-interval wait -->
+    <div id="liveStatusCard"></div>
+
+    <!-- Same weekly insight banner shown on the Log tab -->
+    <div id="insightsCoach"></div>
+
+    <!-- Weekly strength check-in -->
+    <div class="card" id="strengthCard">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <h2 class="section-title" style="margin:0;">Weekly Lifts</h2>
+        <button id="logLiftsBtn" type="button" class="btn btn-secondary" style="width:auto; padding:8px 14px; font-size:13px;">Log this week</button>
+      </div>
+      <div class="strength-status" id="strengthWeekHint"></div>
+    </div>
+
+    <!-- Periodic benchmarks -->
+    <div id="benchmarksSection"></div>
+
+  </div>
+
+</div>
+
+<div class="bottom-nav">
+  <button type="button" id="navLogBtn" class="active">
+    <span class="nav-icon">⚖️</span>
+    <span>Log</span>
+  </button>
+  <button type="button" id="navCoachBtn">
+    <span class="nav-icon">🧠</span>
+    <span>Coach</span>
+  </button>
 </div>
 
 <!-- Onboarding modal -->
@@ -847,6 +892,7 @@
     renderLogHint();
     renderDashboard();
     renderInsights();
+    renderLiveStatus();
     renderBenchmarks();
     renderStrengthCard();
     renderHistory();
@@ -1026,19 +1072,17 @@
     }).join("");
   }
 
-  function renderInsights() {
-    var container = document.getElementById("insights");
-    container.innerHTML = "";
+  // builds the weekly pace/noise banners without touching the DOM, so the same HTML can be
+  // dropped into both the Log tab and the Coach tab
+  function computeInsightBanners() {
+    var banners = [];
     var entries = sortedEntries();
     var goal = getActiveGoal();
-    if (!goal || entries.length === 0) return;
+    if (!goal || entries.length === 0) return banners;
 
     var derived = computeGoalDerived(goal);
-    // entries within the current goal period
     var periodEntries = entries.filter(function (e) { return e.date >= goal.startDate; });
     var spanDays = periodEntries.length ? daysBetween(periodEntries[0].date, periodEntries[periodEntries.length - 1].date) : 0;
-
-    var banners = [];
 
     if (periodEntries.length >= 14 && spanDays >= 14 && derived.targetWeeklyKg != null) {
       var mas = movingAverages(periodEntries);
@@ -1074,9 +1118,47 @@
       }
     }
 
-    container.innerHTML = banners.map(function (b) {
+    return banners;
+  }
+
+  function renderInsights() {
+    var html = computeInsightBanners().map(function (b) {
       return '<div class="insight ' + b.cls + '">' + b.text + '</div>';
     }).join("");
+    document.getElementById("insights").innerHTML = html;
+    var coachEl = document.getElementById("insightsCoach");
+    if (coachEl) coachEl.innerHTML = html;
+  }
+
+  // shared formatting for both a historical "Week N Benchmark" card and the live status card —
+  // same verdict engine, same look, just a different title and whether it's cached
+  function benchmarkCardClass(b) {
+    return b.paceCategory == null ? "note"
+      : b.paceCategory === "behind" ? "behind"
+      : b.paceCategory === "ahead" ? "ahead"
+      : (b.strengthAvailable && b.strengthTrendPct <= -8 ? "note" : "ontarget");
+  }
+
+  function benchmarkCardHTML(b, title, live) {
+    var heading = title ? (title + ' — ' + b.verdict) : b.verdict;
+    return '<div class="insight benchmark-card ' + benchmarkCardClass(b) + '">' +
+      '<div class="bm-title">' + (live ? '<span class="live-badge">LIVE</span>' : '') + heading + '</div>' +
+      '<div>' + b.note + '</div>' +
+      '</div>';
+  }
+
+  // Recomputed fresh on every render (never cached) using whatever data exists up to right now —
+  // unlike the scheduled Benchmark cards below, this never waits for a 14-day or N-week minimum,
+  // it just degrades gracefully to "Not enough data" when the lookback window is too sparse.
+  function renderLiveStatus() {
+    var container = document.getElementById("liveStatusCard");
+    var goal = getActiveGoal();
+    if (!goal) {
+      container.innerHTML = '<div class="card"><p class="hint" style="margin:0;">Set up a goal to see your live coach status.</p></div>';
+      return;
+    }
+    var live = computeBenchmark(goal, "live", todayISO());
+    container.innerHTML = '<h2 class="section-title">Current Status</h2>' + benchmarkCardHTML(live, null, true);
   }
 
   function renderBenchmarks() {
@@ -1092,14 +1174,7 @@
 
     var freq = goal.benchmarkFrequencyWeeks || 4;
     container.innerHTML = '<h2 class="section-title">Benchmarks</h2>' + mine.map(function (b) {
-      var cls = b.paceCategory == null ? "note"
-        : b.paceCategory === "behind" ? "behind"
-        : b.paceCategory === "ahead" ? "ahead"
-        : (b.strengthAvailable && b.strengthTrendPct <= -8 ? "note" : "ontarget");
-      return '<div class="insight benchmark-card ' + cls + '">' +
-        '<div class="bm-title">Week ' + (b.index * freq) + ' Benchmark — ' + b.verdict + '</div>' +
-        '<div>' + b.note + '</div>' +
-        '</div>';
+      return benchmarkCardHTML(b, "Week " + (b.index * freq) + " Benchmark", false);
     }).join("");
   }
 
@@ -1250,9 +1325,21 @@
   }
 
   // ---------- event wiring ----------
+  function switchTab(tab) {
+    var isLog = tab === "log";
+    document.getElementById("tabLog").classList.toggle("hidden", !isLog);
+    document.getElementById("tabCoach").classList.toggle("hidden", isLog);
+    document.getElementById("navLogBtn").classList.toggle("active", isLog);
+    document.getElementById("navCoachBtn").classList.toggle("active", !isLog);
+    window.scrollTo(0, 0);
+  }
+
   function init() {
     wireRadioGroup("onboardGoalTypeGroup");
     wireRadioGroup("goalTypeGroup");
+
+    document.getElementById("navLogBtn").addEventListener("click", function () { switchTab("log"); });
+    document.getElementById("navCoachBtn").addEventListener("click", function () { switchTab("coach"); });
 
     document.getElementById("dateInput").value = todayISO();
 

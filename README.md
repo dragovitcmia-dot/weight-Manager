@@ -2,6 +2,8 @@
 
 A single-page app for daily weight tracking during a cut or bulk. No account, no server — everything lives in your browser.
 
+**Two tabs** at the bottom: **Log** (logging weight, the chart, stats, history) and **Coach** (everything that tells you what to do — live status, weekly insight, lift logging, benchmark history).
+
 ## 1. Getting started
 
 1. Open the app. On first run, a **Set up your goal** screen appears.
@@ -29,17 +31,21 @@ A single-page app for daily weight tracking during a cut or bulk. No account, no
 - Scroll down to see every entry, with the daily change and a **Loss**/**Gain** tag showing which goal period it belongs to.
 - Tap **✕** next to any entry to delete it. A toast appears with an **Undo** button for a few seconds — tap it if you deleted the wrong thing. After the toast disappears, the delete is final.
 
-## 5. Benchmarks & weekly lifts (the body recomposition manager)
+## 5. The Coach tab (the body recomposition manager)
 
-This is the part that crunches the numbers for you so you don't have to sit down and analyze anything yourself.
+This is the part that crunches the numbers for you so you don't have to sit down and analyze anything yourself. Tap **Coach** at the bottom to see it, in this order:
 
+- **Current Status (LIVE)**: the top card. Unlike everything else below it, this recalculates fresh every single time you open the tab or log something new — it never waits for 14 days of data or a scheduled checkpoint. Even on day 2 of a brand-new goal it'll show a real verdict (or "Not enough data" if there's truly nothing to go on yet), using whatever you've logged so far. This is your at-a-glance answer to "how am I doing, right now."
+- **Weekly insight banner**: the same behind/on-target/ahead-of-pace note from the Log tab, shown here too for convenience.
 - **Weekly Lifts card**: once a week, tap **Log this week** and enter your best set for **Pull-ups**, **Dips**, and **Squats** — reps, added weight (0 if bodyweight-only), and RIR (reps you had left in the tank; 0 = to failure). Re-tapping the same week edits that week's numbers instead of duplicating them.
-- **Benchmarks**: set "Benchmark every N weeks" when you set up a goal (default 4). Every N weeks, a **Benchmark** card appears above the chart with one plain-language verdict:
+- **Benchmarks**: set "Benchmark every N weeks" when you set up a goal (default 4). Every N weeks, a new **Benchmark** card is added to this history with one plain-language verdict, frozen at the time it was computed (unlike the live card above, these don't change after the fact):
   - **Eat more** / **Eat less** — your weight trend over that block was off your target pace, in either direction.
   - **Reduce training volume** — your weight trend was right on target (so your food is correct), but your lifts dropped meaningfully over that block anyway. That's a recovery problem, not a food problem.
   - **Hold steady** — on target and your lifts are holding. Keep going.
-- This works for **any goal length and any benchmark frequency** — a 6-week cut with 4-week benchmarks gets one checkpoint, a 21-week bulk gets five. No setup beyond the one number.
-- **One caveat**: your very first benchmark compares your lifts against the ~4 weeks *before* your goal even started. If you weren't logging lifts yet back then, that first benchmark will just tell you it doesn't have enough strength data — it still gives you the food verdict from your weight trend either way. Start logging lifts as soon as you can, ideally before you start a new cut/bulk, so the very first checkpoint has something to compare against.
+
+This works for **any goal length and any benchmark frequency** — a 6-week cut with 4-week benchmarks gets one checkpoint, a 21-week bulk gets five. No setup beyond the one number.
+
+**One caveat**: both the live status and your very first scheduled benchmark compare your lifts against the ~4 weeks *before* your goal even started. If you weren't logging lifts yet back then, you'll just get a "not enough strength data" note — you still get the food verdict from your weight trend either way. Start logging lifts as soon as you can, ideally before you start a new cut/bulk, so the earliest checks have something to compare against.
 
 ## 6. Settings (gear icon, top right)
 
