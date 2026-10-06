@@ -43,6 +43,8 @@ This is the part that crunches the numbers for you so you don't have to sit down
   - **Reduce training volume** — your weight trend was right on target (so your food is correct), but your lifts dropped meaningfully over that block anyway. That's a recovery problem, not a food problem.
   - **Hold steady** — on target and your lifts are holding. Keep going.
 
+Every card spells out what actually happened — the date range, your observed start/end weight, your actual rate vs. your target rate — and when the verdict is "Eat more" or "Eat less," it includes a **calorie estimate** (e.g. "try adding roughly 300 kcal/day"). That number comes purely from the gap between your actual and target weekly rate, converted using the standard ~7700 kcal/kg energy-balance approximation — no food logging needed. It's a *directional estimate*, not a measured number (real bodies don't convert calories to mass at a perfectly constant rate), so treat it as "adjust by about this much," not a precise prescription.
+
 This works for **any goal length and any benchmark frequency** — a 6-week cut with 4-week benchmarks gets one checkpoint, a 21-week bulk gets five. No setup beyond the one number.
 
 **One caveat**: both the live status and your very first scheduled benchmark compare your lifts against the ~4 weeks *before* your goal even started. If you weren't logging lifts yet back then, you'll just get a "not enough strength data" note — you still get the food verdict from your weight trend either way. Start logging lifts as soon as you can, ideally before you start a new cut/bulk, so the earliest checks have something to compare against.
@@ -53,6 +55,7 @@ This works for **any goal length and any benchmark frequency** — a 6-week cut 
 - **Start new goal period**: use this when you switch from cutting to bulking (or vice versa). Your history is kept — old entries keep their old tag, new entries get the new one, and the dashboard always evaluates against whichever goal is currently active.
 - **Reminders**: turn on "Remind me if I haven't logged today" and pick a time. You'll need to allow notifications when your browser asks.
   - **This only checks while the app is open** — it fires when you launch it or bring it back to the foreground. There is no true background push here (a static site with no server can't schedule anything while it's fully closed — nothing runs with no tab open, on any platform). Treat this as a nudge for when you do open the app, not a substitute for making logging part of your routine.
+- **Weekly lift check-in** (on by default): from Monday at the time you set (default 7:00 AM) onward, opening the app pops up the lift-logging form automatically — and it **won't close until you log all three lifts for the week**. No skip button, on purpose. If you miss Monday, it keeps popping up every time you open the app for the rest of that week until you log. Turn it off in Settings if you don't want this. Same foreground-only limitation as Reminders above: it only fires when you actually open the app, not in the background.
   - Use **Send test notification** to confirm notifications work on your device right now.
 - **Backup**:
   - **Export JSON** — full backup of everything (entries, goals, settings). Use this before switching phones or clearing browser data.

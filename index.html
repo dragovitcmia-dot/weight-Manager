@@ -205,6 +205,7 @@
     float: right; background: none; border: none; font-size: 20px;
     color: var(--text-dim); cursor: pointer;
   }
+  .modal-overlay.forced .modal-close { display: none; }
   .field { margin-bottom: 14px; }
   .field label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 5px; }
   .field input[type="text"], .field input[type="number"], .field input[type="date"], .field input[type="time"], .field select {
@@ -463,6 +464,19 @@
 
     <hr class="divider">
 
+    <h2 class="section-title">Weekly lift check-in</h2>
+    <div class="field-row">
+      <label for="weeklyCheckInToggle">Block the app every Monday until lifts are logged</label>
+      <input type="checkbox" id="weeklyCheckInToggle">
+    </div>
+    <div class="field">
+      <label>Due time (Monday)</label>
+      <input type="time" id="weeklyCheckInTime" value="07:00">
+    </div>
+    <p class="hint">From Monday at this time onward, opening the app pops up the lift-logging form and it won't close until you log this week's lifts — no skip button, on purpose. Same foreground-only limit as reminders above: it only triggers when you actually open the app.</p>
+
+    <hr class="divider">
+
     <h2 class="section-title">Backup</h2>
     <div class="btn-row">
       <button id="exportBtn" class="btn btn-secondary">Export JSON</button>
@@ -486,7 +500,7 @@
   <div class="modal">
     <button class="modal-close" id="closeStrength" aria-label="Close">×</button>
     <h2>Log this week's lifts</h2>
-    <p class="hint" style="margin-bottom:16px;">Your best set for each lift this week. Added weight = extra weight only (0 if bodyweight-only). RIR = reps you had left in the tank (0 = to failure).</p>
+    <p class="hint" style="margin-bottom:16px;" id="strengthHint">Your best set for each lift this week. Added weight = extra weight only (0 if bodyweight-only). RIR = reps you had left in the tank (0 = to failure).</p>
     <form id="strengthForm">
       <div class="lift-group">
         <label>Pull-ups</label>
@@ -532,8 +546,12 @@
     return { enabled: false, time: "09:00", lastNotifiedDate: null };
   }
 
+  function defaultWeeklyCheckIn() {
+    return { enabled: true, time: "07:00" };
+  }
+
   function defaultState() {
-    return { entries: [], goals: [], activeGoalId: null, onboarded: false, reminder: defaultReminder(), strengthEntries: [], benchmarks: [] };
+    return { entries: [], goals: [], activeGoalId: null, onboarded: false, reminder: defaultReminder(), strengthEntries: [], benchmarks: [], weeklyCheckIn: defaultWeeklyCheckIn() };
   }
 
   function loadState() {
@@ -543,6 +561,7 @@
       var parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object") return defaultState();
       var r = parsed.reminder;
+      var wci = parsed.weeklyCheckIn;
       return {
         entries: Array.isArray(parsed.entries) ? parsed.entries : [],
         goals: Array.isArray(parsed.goals) ? parsed.goals : [],
@@ -552,7 +571,10 @@
           ? { enabled: !!r.enabled, time: r.time || "09:00", lastNotifiedDate: r.lastNotifiedDate || null }
           : defaultReminder(),
         strengthEntries: Array.isArray(parsed.strengthEntries) ? parsed.strengthEntries : [],
-        benchmarks: Array.isArray(parsed.benchmarks) ? parsed.benchmarks : []
+        benchmarks: Array.isArray(parsed.benchmarks) ? parsed.benchmarks : [],
+        weeklyCheckIn: wci && typeof wci === "object"
+          ? { enabled: wci.enabled !== false, time: wci.time || "07:00" }
+          : defaultWeeklyCheckIn()
       };
     } catch (e) {
       return defaultState();
@@ -776,33 +798,60 @@
     var strengthTrendPct = strengthAvailable ? trendPcts.reduce(function (s, v) { return s + v; }, 0) / trendPcts.length : null;
     var strengthDeclining = strengthAvailable && strengthTrendPct <= -8;
 
+    // Plain-language summary of what actually happened this block: date range + observed
+    // start/end weight, from the raw logged entries (not the regression line) since "what the
+    // scale said" is more trustworthy to read than a smoothed abstraction.
+    var periodSummary = null;
+    if (windowBEntries.length >= 2) {
+      var first = windowBEntries[0], last = windowBEntries[windowBEntries.length - 1];
+      periodSummary = "From " + fmtShort(first.date) + " to " + fmtShort(last.date) + " you went from " +
+        first.weight.toFixed(1) + " kg to " + last.weight.toFixed(1) + " kg";
+    }
+
+    // Calorie estimate: using the standard ~7700 kcal/kg energy-balance approximation, the gap
+    // between your target weekly rate and your actual weekly rate converts directly into a daily
+    // calorie adjustment — no food logging needed, just the weight trend. This is a rough,
+    // directional estimate (it assumes 7700 kcal/kg consistently, which real bodies don't do
+    // exactly), not a measured number — framed as "about" rather than exact.
+    var KCAL_PER_KG = 7700;
+    var calorieAdjustment = (actualRate != null && targetRate != null)
+      ? Math.round(((targetRate - actualRate) * KCAL_PER_KG / 7) / 25) * 25
+      : null;
+
     var verdict, note;
     if (paceCategory == null) {
       verdict = "Not enough data";
       note = "Not enough weigh-ins logged in this window yet to compute a verdict.";
     } else if (paceCategory === "behind") {
       verdict = goal.type === "loss" ? "Eat less" : "Eat more";
-      note = goal.type === "loss"
-        ? "You lost slower than your target rate over this block — tighten the deficit a bit."
-        : "You gained slower than your target rate over this block — add a bit more food.";
+      note = periodSummary + " (" + (actualRate > 0 ? "+" : "") + actualRate.toFixed(2) + " kg/wk vs your " +
+        (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) + " kg/wk target) — slower than planned. " +
+        (goal.type === "loss"
+          ? "Try cutting roughly " + Math.abs(calorieAdjustment) + " kcal/day more to get back on pace."
+          : "Try adding roughly " + Math.abs(calorieAdjustment) + " kcal/day to get back on pace.");
     } else if (paceCategory === "ahead") {
       verdict = goal.type === "loss" ? "Eat more" : "Eat less";
-      note = goal.type === "loss"
-        ? "You lost faster than your target rate over this block — ease the deficit to protect muscle."
-        : "You gained faster than your target rate over this block — ease the surplus to limit fat gain.";
+      note = periodSummary + " (" + (actualRate > 0 ? "+" : "") + actualRate.toFixed(2) + " kg/wk vs your " +
+        (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) + " kg/wk target) — faster than planned. " +
+        (goal.type === "loss"
+          ? "Try adding roughly " + Math.abs(calorieAdjustment) + " kcal/day to protect muscle."
+          : "Try cutting roughly " + Math.abs(calorieAdjustment) + " kcal/day to limit fat gain.");
       if (strengthDeclining) {
         note += " Your lifts also trended down about " + Math.abs(strengthTrendPct).toFixed(0) + "% — that lines up with this, so it's likely not just water weight.";
       }
     } else if (strengthDeclining) {
       verdict = "Reduce training volume";
-      note = "Your weight trend is right on target, so food is dosed correctly — but your lifts dropped about " +
+      note = periodSummary + ", right on your " + (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) +
+        " kg/wk target — food is dosed correctly. But your lifts dropped about " +
         Math.abs(strengthTrendPct).toFixed(0) + "% over this block. Ease training volume so recovery can catch up.";
     } else if (strengthAvailable) {
       verdict = "Hold steady";
-      note = "On target, and your lifts are holding. Keep doing exactly what you're doing.";
+      note = periodSummary + ", right on your " + (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) +
+        " kg/wk target, and your lifts are holding. Keep eating what you're eating.";
     } else {
       verdict = "Hold steady";
-      note = "On target for this block. Log your lifts weekly so future benchmarks can also check training volume.";
+      note = periodSummary + ", right on your " + (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) +
+        " kg/wk target. Log your lifts weekly so future benchmarks can also check training volume.";
     }
 
     return {
@@ -810,6 +859,7 @@
       windowBStart: windowBStart, windowBEnd: windowBEnd, windowAStart: windowAStart, windowAEnd: windowAEnd,
       paceCategory: paceCategory, paceRatio: paceRatio, actualRate: actualRate, targetRate: targetRate,
       strengthAvailable: strengthAvailable, strengthTrendPct: strengthTrendPct, perLift: perLift,
+      calorieAdjustment: calorieAdjustment,
       verdict: verdict, note: note, computedAt: todayISO()
     };
   }
@@ -1293,6 +1343,12 @@
     document.getElementById("reminderTime").value = r.time || "09:00";
   }
 
+  function populateWeeklyCheckInForm() {
+    var w = state.weeklyCheckIn || defaultWeeklyCheckIn();
+    document.getElementById("weeklyCheckInToggle").checked = !!w.enabled;
+    document.getElementById("weeklyCheckInTime").value = w.time || "07:00";
+  }
+
   // ---------- daily reminder ----------
   // Reliable path: while the app is open (foreground or backgrounded-but-alive tab), we check on
   // a timer and on visibility change. Best-effort path: Periodic Background Sync (Chrome/Android
@@ -1322,6 +1378,43 @@
     fireReminderNotification();
     state.reminder.lastNotifiedDate = today;
     saveState();
+  }
+
+  // Populates and shows the strength-logging modal. `forced` hides the close button and swaps
+  // the hint text — used by the Monday check-in below, which must only be escapable by logging.
+  function openStrengthModal(forced) {
+    var wk = mondayOf(todayISO());
+    LIFTS.forEach(function (lift) {
+      var e = getStrengthEntry(wk, lift);
+      document.getElementById(lift + "Reps").value = e ? e.reps : "";
+      document.getElementById(lift + "Weight").value = e ? e.weight : 0;
+      document.getElementById(lift + "Rir").value = e ? e.rir : "";
+    });
+    var overlay = document.getElementById("strengthOverlay");
+    overlay.classList.toggle("forced", !!forced);
+    document.getElementById("strengthHint").textContent = forced
+      ? "It's Monday — log this week's lifts to continue. This won't close until you do."
+      : "Your best set for each lift this week. Added weight = extra weight only (0 if bodyweight-only). RIR = reps you had left in the tank (0 = to failure).";
+    overlay.classList.remove("hidden");
+  }
+
+  // Foreground-only, same limitation as checkReminder: from Monday at the chosen time onward,
+  // opening the app pops the strength modal and locks it open until that week's lifts are all
+  // logged. No skip — if it's still due every time the app opens, it opens again.
+  function checkWeeklyCheckIn() {
+    if (!state.onboarded) return; // don't fight with the onboarding modal
+    var w = state.weeklyCheckIn;
+    if (!w || !w.enabled) return;
+    var todayW = todayISO();
+    var wkMonday = mondayOf(todayW);
+    var isMondayToday = todayW === wkMonday;
+    var now = new Date();
+    var nowHM = pad(now.getHours()) + ":" + pad(now.getMinutes());
+    var pastDue = !isMondayToday || nowHM >= (w.time || "07:00");
+    if (!pastDue) return;
+    var allLogged = LIFTS.every(function (lift) { return !!getStrengthEntry(wkMonday, lift); });
+    if (allLogged) return;
+    openStrengthModal(true);
   }
 
   // ---------- event wiring ----------
@@ -1375,6 +1468,7 @@
     document.getElementById("settingsBtn").addEventListener("click", function () {
       populateGoalForm();
       populateReminderForm();
+      populateWeeklyCheckInForm();
       document.getElementById("settingsOverlay").classList.remove("hidden");
     });
     document.getElementById("closeSettings").addEventListener("click", function () {
@@ -1500,6 +1594,19 @@
       saveState();
     });
 
+    document.getElementById("weeklyCheckInToggle").addEventListener("change", function (e) {
+      state.weeklyCheckIn = state.weeklyCheckIn || defaultWeeklyCheckIn();
+      state.weeklyCheckIn.enabled = e.target.checked;
+      saveState();
+      if (e.target.checked) checkWeeklyCheckIn();
+    });
+
+    document.getElementById("weeklyCheckInTime").addEventListener("change", function (e) {
+      state.weeklyCheckIn = state.weeklyCheckIn || defaultWeeklyCheckIn();
+      state.weeklyCheckIn.time = e.target.value || "07:00";
+      saveState();
+    });
+
     document.getElementById("testNotificationBtn").addEventListener("click", function () {
       if (typeof Notification === "undefined") {
         showToast("Notifications aren't supported in this browser");
@@ -1516,14 +1623,7 @@
     });
 
     document.getElementById("logLiftsBtn").addEventListener("click", function () {
-      var wk = mondayOf(todayISO());
-      LIFTS.forEach(function (lift) {
-        var e = getStrengthEntry(wk, lift);
-        document.getElementById(lift + "Reps").value = e ? e.reps : "";
-        document.getElementById(lift + "Weight").value = e ? e.weight : 0;
-        document.getElementById(lift + "Rir").value = e ? e.rir : "";
-      });
-      document.getElementById("strengthOverlay").classList.remove("hidden");
+      openStrengthModal(false);
     });
 
     document.getElementById("closeStrength").addEventListener("click", function () {
@@ -1532,19 +1632,23 @@
 
     document.getElementById("strengthForm").addEventListener("submit", function (e) {
       e.preventDefault();
+      var overlay = document.getElementById("strengthOverlay");
+      var forced = overlay.classList.contains("forced");
       var wk = mondayOf(todayISO());
-      var anyValid = false;
+      var validCount = 0;
       LIFTS.forEach(function (lift) {
         var reps = parseInt(document.getElementById(lift + "Reps").value, 10);
         var weight = parseFloat(document.getElementById(lift + "Weight").value);
         var rir = parseInt(document.getElementById(lift + "Rir").value, 10);
         if (!isNaN(reps) && reps >= 0) {
           upsertStrengthEntry(wk, lift, reps, isNaN(weight) ? 0 : weight, isNaN(rir) ? 0 : rir);
-          anyValid = true;
+          validCount++;
         }
       });
-      if (!anyValid) { showToast("Enter at least one lift"); return; }
-      document.getElementById("strengthOverlay").classList.add("hidden");
+      if (validCount === 0) { showToast("Enter at least one lift"); return; }
+      if (forced && validCount < LIFTS.length) { showToast("Log all 3 lifts to continue"); return; }
+      overlay.classList.add("hidden");
+      overlay.classList.remove("forced");
       showToast("Lifts logged for this week");
       renderAll();
     });
@@ -1609,6 +1713,7 @@
           }
           if (!confirm("Import will replace all current data with the backup file. Continue?")) return;
           var r = parsed.reminder;
+          var wci = parsed.weeklyCheckIn;
           state = {
             entries: parsed.entries,
             goals: parsed.goals,
@@ -1618,7 +1723,10 @@
               ? { enabled: !!r.enabled, time: r.time || "09:00", lastNotifiedDate: r.lastNotifiedDate || null }
               : defaultReminder(),
             strengthEntries: Array.isArray(parsed.strengthEntries) ? parsed.strengthEntries : [],
-            benchmarks: Array.isArray(parsed.benchmarks) ? parsed.benchmarks : []
+            benchmarks: Array.isArray(parsed.benchmarks) ? parsed.benchmarks : [],
+            weeklyCheckIn: wci && typeof wci === "object"
+              ? { enabled: wci.enabled !== false, time: wci.time || "07:00" }
+              : defaultWeeklyCheckIn()
           };
           saveState();
           showToast("Data imported");
@@ -1648,6 +1756,11 @@
     });
 
     renderAll();
+    checkWeeklyCheckIn();
+    setInterval(checkWeeklyCheckIn, 5 * 60 * 1000);
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") checkWeeklyCheckIn();
+    });
   }
 
   // ---------- PWA: service worker + update prompt ----------
