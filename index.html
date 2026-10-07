@@ -607,11 +607,14 @@
     var d = parseISO(iso);
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
-  // Monday of the calendar week containing this date — used to key one strength entry per lift per week
-  function mondayOf(iso) {
+  // The Monday that closes out the lifting week containing this date — Monday is the LAST day of
+  // the week here (a week runs Tue-Mon), not the first, so logging any day up through Monday
+  // satisfies that same cycle. Returns the date itself if it's already a Monday, otherwise the
+  // next upcoming Monday.
+  function dueMondayOf(iso) {
     var d = parseISO(iso);
-    var day = d.getDay(); // 0 = Sunday
-    var diff = day === 0 ? -6 : 1 - day;
+    var day = d.getDay(); // 0 = Sunday, 1 = Monday, ...
+    var diff = day === 0 ? 1 : day === 1 ? 0 : 8 - day;
     d.setDate(d.getDate() + diff);
     return toISO(d);
   }
@@ -1230,7 +1233,7 @@
 
   function renderStrengthCard() {
     var hint = document.getElementById("strengthWeekHint");
-    var wk = mondayOf(todayISO());
+    var wk = dueMondayOf(todayISO());
     var loggedCount = LIFTS.filter(function (l) { return !!getStrengthEntry(wk, l); }).length;
     hint.textContent = loggedCount === LIFTS.length
       ? "Logged for this week ✓"
@@ -1383,7 +1386,7 @@
   // Populates and shows the strength-logging modal. `forced` hides the close button and swaps
   // the hint text — used by the Monday check-in below, which must only be escapable by logging.
   function openStrengthModal(forced) {
-    var wk = mondayOf(todayISO());
+    var wk = dueMondayOf(todayISO());
     LIFTS.forEach(function (lift) {
       var e = getStrengthEntry(wk, lift);
       document.getElementById(lift + "Reps").value = e ? e.reps : "";
@@ -1398,21 +1401,22 @@
     overlay.classList.remove("hidden");
   }
 
-  // Foreground-only, same limitation as checkReminder: from Monday at the chosen time onward,
-  // opening the app pops the strength modal and locks it open until that week's lifts are all
-  // logged. No skip — if it's still due every time the app opens, it opens again.
+  // Foreground-only, same limitation as checkReminder. Monday is the LAST day of the lifting
+  // week here (a week runs Tue-Mon), not the first — so this only nags on the due Monday itself,
+  // from the chosen time onward, and only if that week's lifts aren't already logged. Logging any
+  // day up through Monday satisfies it, so a log made the day before never gets re-asked the
+  // moment Monday arrives.
   function checkWeeklyCheckIn() {
     if (!state.onboarded) return; // don't fight with the onboarding modal
     var w = state.weeklyCheckIn;
     if (!w || !w.enabled) return;
     var todayW = todayISO();
-    var wkMonday = mondayOf(todayW);
-    var isMondayToday = todayW === wkMonday;
+    var dueMonday = dueMondayOf(todayW);
+    if (todayW !== dueMonday) return; // not yet the due day
     var now = new Date();
     var nowHM = pad(now.getHours()) + ":" + pad(now.getMinutes());
-    var pastDue = !isMondayToday || nowHM >= (w.time || "07:00");
-    if (!pastDue) return;
-    var allLogged = LIFTS.every(function (lift) { return !!getStrengthEntry(wkMonday, lift); });
+    if (nowHM < (w.time || "07:00")) return;
+    var allLogged = LIFTS.every(function (lift) { return !!getStrengthEntry(dueMonday, lift); });
     if (allLogged) return;
     openStrengthModal(true);
   }
@@ -1634,7 +1638,7 @@
       e.preventDefault();
       var overlay = document.getElementById("strengthOverlay");
       var forced = overlay.classList.contains("forced");
-      var wk = mondayOf(todayISO());
+      var wk = dueMondayOf(todayISO());
       var validCount = 0;
       LIFTS.forEach(function (lift) {
         var reps = parseInt(document.getElementById(lift + "Reps").value, 10);
