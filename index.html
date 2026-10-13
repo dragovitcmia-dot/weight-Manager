@@ -594,6 +594,24 @@
 
   var state = loadState();
 
+  // Validates an imported backup's required fields before anything touches localStorage — the
+  // render pipeline assumes every goal has these fields (computeGoalDerived does unchecked date
+  // math on them) and every entry has a numeric weight, so a backup missing any of this must be
+  // rejected up front rather than saved and crash later.
+  function isValidBackupData(parsed) {
+    if (!parsed || typeof parsed !== "object") return false;
+    if (!Array.isArray(parsed.entries) || !Array.isArray(parsed.goals)) return false;
+    var entriesOk = parsed.entries.every(function (e) {
+      return e && typeof e.date === "string" && typeof e.weight === "number" && isFinite(e.weight);
+    });
+    var goalsOk = parsed.goals.every(function (g) {
+      return g && (g.type === "loss" || g.type === "gain") && typeof g.startDate === "string" &&
+        typeof g.durationWeeks === "number" && g.durationWeeks > 0 &&
+        typeof g.targetRatePct === "number" && g.targetRatePct >= 0;
+    });
+    return entriesOk && goalsOk;
+  }
+
   // ---------- date helpers ----------
   function pad(n) { return n < 10 ? "0" + n : "" + n; }
   function toISO(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
@@ -768,7 +786,11 @@
 
   function computeBenchmark(goal, index, benchmarkDate) {
     var freqDays = (goal.benchmarkFrequencyWeeks || 4) * 7;
+    // never look at weight data from before this goal period started — a young goal (younger
+    // than its own benchmark frequency) would otherwise blend in entries from a prior goal
+    // (e.g. the tail of a bulk bleeding into a brand-new cut's pace check)
     var windowBStart = addDays(benchmarkDate, -freqDays + 1);
+    if (windowBStart < goal.startDate) windowBStart = goal.startDate;
     var windowBEnd = benchmarkDate;
     var windowAStart = addDays(benchmarkDate, -2 * freqDays + 1);
     var windowAEnd = addDays(benchmarkDate, -freqDays);
@@ -885,7 +907,10 @@
     var changed = false;
     dates.forEach(function (d, i) {
       if (d > today) return;
-      var already = state.benchmarks.some(function (b) { return b.goalId === goal.id && b.index === i + 1; });
+      // keyed by the actual benchmark date, not a sequential index — an index would silently
+      // point at a different checkpoint (or block a new one from ever being computed) if the
+      // goal's benchmark frequency is edited after some benchmarks already exist
+      var already = state.benchmarks.some(function (b) { return b.goalId === goal.id && b.date === d; });
       if (already) return;
       state.benchmarks.push(computeBenchmark(goal, i + 1, d));
       changed = true;
@@ -951,8 +976,12 @@
     renderOnboardingVisibility();
     renderLogHint();
     renderDashboard();
-    renderInsights();
-    renderLiveStatus();
+    // computed once and shared by both the Log-tab banner and the Coach "Current Status" card,
+    // instead of each running its own copy of the same regression + per-lift averaging
+    var activeGoal = getActiveGoal();
+    var liveBenchmark = activeGoal ? computeBenchmark(activeGoal, "live", todayISO()) : null;
+    renderInsights(liveBenchmark);
+    renderLiveStatus(liveBenchmark);
     renderBenchmarks();
     renderStrengthCard();
     renderStrengthTrends();
@@ -1134,8 +1163,10 @@
   }
 
   // builds the weekly pace/noise banners without touching the DOM, so the same HTML can be
-  // dropped into both the Log tab and the Coach tab
-  function computeInsightBanners() {
+  // dropped into both the Log tab and the Coach tab. Takes the already-computed live benchmark
+  // (shared with renderLiveStatus) instead of recomputing it, so the same regression + per-lift
+  // averaging doesn't run twice on every render.
+  function computeInsightBanners(live) {
     var banners = [];
     var entries = sortedEntries();
     var goal = getActiveGoal();
@@ -1145,11 +1176,10 @@
     var periodEntries = entries.filter(function (e) { return e.date >= goal.startDate; });
     var spanDays = periodEntries.length ? daysBetween(periodEntries[0].date, periodEntries[periodEntries.length - 1].date) : 0;
 
-    if (periodEntries.length >= 14 && spanDays >= 14 && derived.targetWeeklyKg != null) {
+    if (periodEntries.length >= 14 && spanDays >= 14 && derived.targetWeeklyKg != null && live) {
       // delegates to computeBenchmark (the same engine behind the Coach tab's Live Status card)
       // instead of running its own separate regression — there is now exactly one pace verdict,
       // computed once, so this banner can never disagree with Coach
-      var live = computeBenchmark(goal, "live", todayISO());
       if (live.paceCategory === "behind") {
         banners.push({ cls: "behind", text: "Behind pace — consider adjusting intake toward your target rate. See Coach for the full breakdown." });
       } else if (live.paceCategory === "on") {
@@ -1177,8 +1207,8 @@
     return banners;
   }
 
-  function renderInsights() {
-    var html = computeInsightBanners().map(function (b) {
+  function renderInsights(live) {
+    var html = computeInsightBanners(live).map(function (b) {
       return '<div class="insight ' + b.cls + '">' + b.text + '</div>';
     }).join("");
     document.getElementById("insights").innerHTML = html;
@@ -1228,14 +1258,12 @@
   // Recomputed fresh on every render (never cached) using whatever data exists up to right now —
   // unlike the scheduled Benchmark cards below, this never waits for a 14-day or N-week minimum,
   // it just degrades gracefully to "Not enough data" when the lookback window is too sparse.
-  function renderLiveStatus() {
+  function renderLiveStatus(live) {
     var container = document.getElementById("liveStatusCard");
-    var goal = getActiveGoal();
-    if (!goal) {
+    if (!live) {
       container.innerHTML = '<div class="card"><p class="hint" style="margin:0;">Set up a goal to see your live coach status.</p></div>';
       return;
     }
-    var live = computeBenchmark(goal, "live", todayISO());
     container.innerHTML = '<h2 class="section-title">Current Status</h2>' + benchmarkCardHTML(live, null, true);
   }
 
@@ -1247,12 +1275,15 @@
     ensureBenchmarksComputed();
 
     var mine = state.benchmarks.filter(function (b) { return b.goalId === goal.id; })
-      .slice().sort(function (a, b) { return b.index - a.index; });
+      .slice().sort(function (a, b) { return b.date < a.date ? -1 : 1; });
     if (!mine.length) { container.innerHTML = ""; return; }
 
-    var freq = goal.benchmarkFrequencyWeeks || 4;
+    // labeled by weeks actually elapsed since the goal started, not index * current frequency —
+    // that index/frequency math goes stale (and mislabels frozen, already-computed cards) the
+    // moment the goal's benchmark frequency is edited after some benchmarks already exist
     container.innerHTML = '<h2 class="section-title">Benchmarks</h2>' + mine.map(function (b) {
-      return benchmarkCardHTML(b, "Week " + (b.index * freq) + " Benchmark", false);
+      var weeksElapsed = Math.round(daysBetween(goal.startDate, b.date) / 7);
+      return benchmarkCardHTML(b, "Week " + weeksElapsed + " Benchmark", false);
     }).join("");
   }
 
@@ -1807,7 +1838,11 @@
       reader.onload = function () {
         try {
           var parsed = JSON.parse(reader.result);
-          if (!parsed || !Array.isArray(parsed.entries) || !Array.isArray(parsed.goals)) {
+          // validate every record's required fields up front, before anything touches
+          // localStorage — a goal or entry missing a required field used to pass this check,
+          // get saved, and only crash later (in renderAll or on the next reload), by which point
+          // the real data was already overwritten even though the toast said "Invalid backup file"
+          if (!isValidBackupData(parsed)) {
             throw new Error("bad format");
           }
           if (!confirm("Import will replace all current data with the backup file. Continue?")) return;
