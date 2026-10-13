@@ -24,7 +24,7 @@ A single-page app for daily weight tracking during a cut or bulk. No account, no
   - *Actual rate (3wk)* — how fast you're actually losing/gaining, from the trend line.
   - *Target rate* — what your goal setup implies, in kg/week.
   - *Days remaining* / *Projected end weight* / *Target end weight* — where you're headed vs. where you set out to go.
-- **Insight banner** (appears once you have 14+ days of data in your current goal period): tells you if you're behind pace, on target, or ahead of pace — and flags a single-day spike as likely water weight, not signal.
+- **Insight banner** (appears once you have 14+ days of data in your current goal period): tells you if you're behind pace, on target, or ahead of pace — and flags a single-day spike as likely water weight, not signal. This uses the exact same calculation as the Coach tab's Current Status card, so the two can never disagree with each other.
 
 ## 4. History
 
@@ -36,14 +36,17 @@ A single-page app for daily weight tracking during a cut or bulk. No account, no
 This is the part that crunches the numbers for you so you don't have to sit down and analyze anything yourself. Tap **Coach** at the bottom to see it, in this order:
 
 - **Current Status (LIVE)**: the top card. Unlike everything else below it, this recalculates fresh every single time you open the tab or log something new — it never waits for 14 days of data or a scheduled checkpoint. Even on day 2 of a brand-new goal it'll show a real verdict (or "Not enough data" if there's truly nothing to go on yet), using whatever you've logged so far. This is your at-a-glance answer to "how am I doing, right now."
-- **Weekly insight banner**: the same behind/on-target/ahead-of-pace note from the Log tab, shown here too for convenience.
+- **Weekly insight banner**: the same behind/on-target/ahead-of-pace note from the Log tab, shown here too for convenience. It's computed by the exact same engine as the card above it, so they always agree.
 - **Weekly Lifts card**: once a week, tap **Log this week** and enter your best set for **Pull-ups**, **Dips**, and **Squats** — reps, added weight (0 if bodyweight-only), and RIR (reps you had left in the tank; 0 = to failure). Re-tapping the same week edits that week's numbers instead of duplicating them.
+- **Strength Trends**: one line graph per lift, plotting your effective load (bodyweight + added weight, scaled by reps and how close to failure you went) across every week you've logged it. A lift you haven't logged yet just shows "not logged yet" instead of an empty chart. This is where you actually *see* your strength progress over time, not just a one-line verdict about it.
 - **Benchmarks**: set "Benchmark every N weeks" when you set up a goal (default 4). Every N weeks, a new **Benchmark** card is added to this history with one plain-language verdict, frozen at the time it was computed (unlike the live card above, these don't change after the fact):
   - **Eat more** / **Eat less** — your weight trend over that block was off your target pace, in either direction.
   - **Reduce training volume** — your weight trend was right on target (so your food is correct), but your lifts dropped meaningfully over that block anyway. That's a recovery problem, not a food problem.
   - **Hold steady** — on target and your lifts are holding. Keep going.
 
 Every card spells out what actually happened — the date range, your observed start/end weight, your actual rate vs. your target rate — and when the verdict is "Eat more" or "Eat less," it includes a **calorie estimate** (e.g. "try adding roughly 300 kcal/day"). That number comes purely from the gap between your actual and target weekly rate, converted using the standard ~7700 kcal/kg energy-balance approximation — no food logging needed. It's a *directional estimate*, not a measured number (real bodies don't convert calories to mass at a perfectly constant rate), so treat it as "adjust by about this much," not a precise prescription.
+
+Below every verdict is a quieter **details line** with the actual receipts: the exact date window used, your actual rate vs. target rate as a percentage ("68% of target pace"), and each lift's individual percent change against the block before it ("Pull-ups +12% · Dips -3% · Squats: not enough data"). This is the reasoning behind the verdict, not just the conclusion — so you can check the math yourself instead of taking the one-line summary on faith.
 
 This works for **any goal length and any benchmark frequency** — a 6-week cut with 4-week benchmarks gets one checkpoint, a 21-week bulk gets five. No setup beyond the one number.
 

@@ -157,6 +157,7 @@
   .stat .value { font-size: 18px; font-weight: 700; margin-top: 2px; }
   .stat .sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
   canvas#chart { width: 100% !important; height: 220px !important; }
+  canvas.strength-chart { width: 100% !important; height: 140px !important; }
   .empty { text-align: center; color: var(--text-dim); padding: 24px 8px; font-size: 14px; }
   .insight {
     border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.4;
@@ -166,6 +167,8 @@
   .insight.ontarget { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-text); }
   .insight.ahead { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
   .insight.note { background: var(--note-bg); border-color: var(--note-border); color: var(--note-text); }
+  .bm-details { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); opacity: 0.8; font-size: 12px; line-height: 1.5; }
+  .bm-details div { margin-bottom: 2px; }
   h2.section-title { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); margin: 4px 0 10px; }
   table.history { width: 100%; border-collapse: collapse; font-size: 14px; }
   table.history th, table.history td { text-align: left; padding: 7px 4px; border-bottom: 1px solid var(--border); }
@@ -344,6 +347,9 @@
       </div>
       <div class="strength-status" id="strengthWeekHint"></div>
     </div>
+
+    <!-- Strength trend graphs, one per lift -->
+    <div id="strengthTrendsSection"></div>
 
     <!-- Periodic benchmarks -->
     <div id="benchmarksSection"></div>
@@ -540,6 +546,7 @@
 
   var STORAGE_KEY = "weightTracker.v1";
   var chartInstance = null;
+  var strengthChartInstances = {};
 
   // ---------- state ----------
   function defaultReminder() {
@@ -948,6 +955,7 @@
     renderLiveStatus();
     renderBenchmarks();
     renderStrengthCard();
+    renderStrengthTrends();
     renderHistory();
   }
 
@@ -1138,24 +1146,19 @@
     var spanDays = periodEntries.length ? daysBetween(periodEntries[0].date, periodEntries[periodEntries.length - 1].date) : 0;
 
     if (periodEntries.length >= 14 && spanDays >= 14 && derived.targetWeeklyKg != null) {
-      var mas = movingAverages(periodEntries);
-      var recent21 = mas.slice(-21);
-      var reg = linreg(recent21.map(function (m, i) { return { x: i, y: m.ma }; }));
-      if (reg) {
-        var actualRate = reg.slope * 7;
-        var targetRate = derived.targetWeeklyKg;
-        var ratio = targetRate !== 0 ? actualRate / targetRate : 0;
-
-        if (ratio < 0.75) {
-          banners.push({ cls: "behind", text: "Behind pace — consider adjusting intake toward your target rate." });
-        } else if (ratio <= 1.25) {
-          banners.push({ cls: "ontarget", text: "On target, hold current intake." });
-        } else {
-          var riskText = goal.type === "loss"
-            ? "this raises muscle-loss risk if sustained"
-            : "this raises excess-fat-gain risk if sustained";
-          banners.push({ cls: "ahead", text: "Ahead of pace — " + riskText + "; consider easing the " + (goal.type === "loss" ? "deficit" : "surplus") + "." });
-        }
+      // delegates to computeBenchmark (the same engine behind the Coach tab's Live Status card)
+      // instead of running its own separate regression — there is now exactly one pace verdict,
+      // computed once, so this banner can never disagree with Coach
+      var live = computeBenchmark(goal, "live", todayISO());
+      if (live.paceCategory === "behind") {
+        banners.push({ cls: "behind", text: "Behind pace — consider adjusting intake toward your target rate. See Coach for the full breakdown." });
+      } else if (live.paceCategory === "on") {
+        banners.push({ cls: "ontarget", text: "On target, hold current intake. See Coach for the full breakdown." });
+      } else if (live.paceCategory === "ahead") {
+        var riskText = goal.type === "loss"
+          ? "this raises muscle-loss risk if sustained"
+          : "this raises excess-fat-gain risk if sustained";
+        banners.push({ cls: "ahead", text: "Ahead of pace — " + riskText + "; consider easing the " + (goal.type === "loss" ? "deficit" : "surplus") + ". See Coach for the full breakdown." });
       }
     }
 
@@ -1197,7 +1200,29 @@
     return '<div class="insight benchmark-card ' + benchmarkCardClass(b) + '">' +
       '<div class="bm-title">' + (live ? '<span class="live-badge">LIVE</span>' : '') + heading + '</div>' +
       '<div>' + b.note + '</div>' +
+      benchmarkDetailsHTML(b) +
       '</div>';
+  }
+
+  // the receipts behind the verdict above: exact window, actual vs target rate as a %, and
+  // each lift's individual trend — so "why" is always one scroll away, not just a one-liner
+  function benchmarkDetailsHTML(b) {
+    if (b.paceCategory == null) return "";
+    var lines = [];
+    lines.push("Window: " + fmtShort(b.windowBStart) + " – " + fmtShort(b.windowBEnd) + " · " +
+      (b.actualRate > 0 ? "+" : "") + b.actualRate.toFixed(2) + " kg/wk actual vs " +
+      (b.targetRate > 0 ? "+" : "") + b.targetRate.toFixed(2) + " kg/wk target (" +
+      Math.round(b.paceRatio * 100) + "% of target pace).");
+
+    var liftLines = LIFTS.map(function (lift) {
+      var p = b.perLift[lift];
+      if (!p || p.pctChange == null) return LIFT_LABELS[lift] + ": not enough data";
+      return LIFT_LABELS[lift] + " " + (p.pctChange > 0 ? "+" : "") + p.pctChange.toFixed(0) + "% (" +
+        Math.round(p.avgPrev) + " → " + Math.round(p.avgNow) + ")";
+    });
+    lines.push("Strength vs. prior block — " + liftLines.join(" · "));
+
+    return '<div class="bm-details">' + lines.map(function (l) { return "<div>" + l + "</div>"; }).join("") + "</div>";
   }
 
   // Recomputed fresh on every render (never cached) using whatever data exists up to right now —
@@ -1240,6 +1265,76 @@
       : loggedCount === 0
         ? "Not logged yet this week."
         : loggedCount + " of " + LIFTS.length + " lifts logged this week.";
+  }
+
+  // one small line chart per lift, plotting strengthScore() (bodyweight + added weight, scaled
+  // by reps + RIR) across every logged week — the actual trend data behind the verdict text,
+  // not just an aggregated percentage
+  function renderStrengthTrends() {
+    var section = document.getElementById("strengthTrendsSection");
+    var perLiftData = LIFTS.map(function (lift) {
+      var points = sortedStrengthEntries(lift)
+        .map(function (e) { return { label: fmtShort(e.weekStart), score: strengthScore(e) }; })
+        .filter(function (p) { return p.score != null; });
+      return { lift: lift, points: points };
+    });
+
+    var anyData = perLiftData.some(function (d) { return d.points.length > 0; });
+    if (!anyData) {
+      Object.keys(strengthChartInstances).forEach(function (lift) {
+        strengthChartInstances[lift].destroy();
+        delete strengthChartInstances[lift];
+      });
+      section.innerHTML = '<div class="card"><h2 class="section-title">Strength Trends</h2>' +
+        '<p class="hint" style="margin:0;">Log your lifts weekly to see trend graphs here.</p></div>';
+      return;
+    }
+
+    section.innerHTML = '<div class="card"><h2 class="section-title">Strength Trends</h2>' +
+      perLiftData.map(function (d) {
+        return '<div style="margin-bottom:16px;">' +
+          '<div class="sub" style="margin-bottom:4px;">' + LIFT_LABELS[d.lift] +
+          (d.points.length ? '' : ' <span class="hint" style="margin:0;">— not logged yet</span>') + '</div>' +
+          (d.points.length ? '<canvas class="strength-chart" id="strengthChart_' + d.lift + '"></canvas>' : '') +
+          '</div>';
+      }).join("") +
+      '</div>';
+
+    var css = getComputedStyle(document.documentElement);
+    var lineColor = css.getPropertyValue("--ma-line").trim();
+    var textColor = css.getPropertyValue("--text-dim").trim();
+    var gridColor = css.getPropertyValue("--border").trim();
+
+    perLiftData.forEach(function (d) {
+      if (strengthChartInstances[d.lift]) { strengthChartInstances[d.lift].destroy(); delete strengthChartInstances[d.lift]; }
+      if (!d.points.length) return;
+      var canvas = document.getElementById("strengthChart_" + d.lift);
+      strengthChartInstances[d.lift] = new Chart(canvas.getContext("2d"), {
+        type: "line",
+        data: {
+          labels: d.points.map(function (p) { return p.label; }),
+          datasets: [{
+            label: LIFT_LABELS[d.lift],
+            data: d.points.map(function (p) { return p.score; }),
+            borderColor: lineColor,
+            backgroundColor: lineColor,
+            borderWidth: 2.5,
+            pointRadius: 3,
+            tension: 0.15
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: textColor, maxTicksLimit: 5, font: { size: 10 } }, grid: { color: gridColor } },
+            y: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor } }
+          }
+        }
+      });
+    });
   }
 
   function renderHistory() {
