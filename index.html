@@ -808,8 +808,24 @@
       if (reg) actualRate = reg.slope * 7;
     }
 
-    var paceRatio = (actualRate != null && targetRate) ? actualRate / targetRate : null;
-    var paceCategory = paceRatio == null ? null : (paceRatio < 0.75 ? "behind" : paceRatio <= 1.25 ? "on" : "ahead");
+    // A target rate of exactly 0 is a real, UI-allowed goal (maintenance — hold steady after a
+    // cut/bulk), not "no target." It can't use a ratio (divide-by-zero), so it's classified by
+    // absolute drift from flat instead: within the noise band is "on", otherwise "behind"
+    // (drifting down) or "ahead" (drifting up) — reused only for color/banner-category purposes,
+    // since direction here means something different than it does for an actual cut/bulk (see
+    // the maintenance-specific verdict branches below, which don't depend on goal.type).
+    var isMaintenance = targetRate === 0;
+    var MAINTENANCE_EPSILON_KG_PER_WK = 0.15;
+    var paceRatio = null;
+    var paceCategory = null;
+    if (actualRate != null && targetRate != null) {
+      if (isMaintenance) {
+        paceCategory = Math.abs(actualRate) <= MAINTENANCE_EPSILON_KG_PER_WK ? "on" : (actualRate > 0 ? "ahead" : "behind");
+      } else if (targetRate !== 0) {
+        paceRatio = actualRate / targetRate;
+        paceCategory = paceRatio < 0.75 ? "behind" : paceRatio <= 1.25 ? "on" : "ahead";
+      }
+    }
 
     var perLift = {};
     var trendPcts = [];
@@ -854,6 +870,20 @@
     if (paceCategory == null) {
       verdict = "Not enough data";
       note = "Not enough weigh-ins logged in this window yet to compute a verdict.";
+    } else if (isMaintenance && paceCategory === "behind") {
+      // drifting down from a flat maintenance target — direction here is absolute (losing),
+      // not relative to goal.type, so it's always "eat more" regardless of how the goal was set up
+      verdict = "Eat more";
+      note = periodSummary + " (" + actualRate.toFixed(2) + " kg/wk vs your flat maintenance target) — " +
+        "you're drifting down. Try adding roughly " + Math.abs(calorieAdjustment) + " kcal/day to get back to maintenance.";
+    } else if (isMaintenance && paceCategory === "ahead") {
+      // drifting up from a flat maintenance target — always "eat less", regardless of goal.type
+      verdict = "Eat less";
+      note = periodSummary + " (+" + actualRate.toFixed(2) + " kg/wk vs your flat maintenance target) — " +
+        "you're drifting up. Try cutting roughly " + Math.abs(calorieAdjustment) + " kcal/day to get back to maintenance.";
+      if (strengthDeclining) {
+        note += " Your lifts also trended down about " + Math.abs(strengthTrendPct).toFixed(0) + "% — that lines up with this, so it's likely not just water weight.";
+      }
     } else if (paceCategory === "behind") {
       verdict = goal.type === "loss" ? "Eat less" : "Eat more";
       note = periodSummary + " (" + (actualRate > 0 ? "+" : "") + actualRate.toFixed(2) + " kg/wk vs your " +
@@ -873,23 +903,28 @@
       }
     } else if (strengthDeclining) {
       verdict = "Reduce training volume";
-      note = periodSummary + ", right on your " + (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) +
-        " kg/wk target — food is dosed correctly. But your lifts dropped about " +
-        Math.abs(strengthTrendPct).toFixed(0) + "% over this block. Ease training volume so recovery can catch up.";
+      note = (isMaintenance
+        ? periodSummary + ", right at your maintenance weight — food is dosed correctly."
+        : periodSummary + ", right on your " + (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) + " kg/wk target — food is dosed correctly.") +
+        " But your lifts dropped about " + Math.abs(strengthTrendPct).toFixed(0) + "% over this block. Ease training volume so recovery can catch up.";
     } else if (strengthAvailable) {
       verdict = "Hold steady";
-      note = periodSummary + ", right on your " + (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) +
-        " kg/wk target, and your lifts are holding. Keep eating what you're eating.";
+      note = (isMaintenance
+        ? periodSummary + ", right at your maintenance weight, and your lifts are holding."
+        : periodSummary + ", right on your " + (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) + " kg/wk target, and your lifts are holding.") +
+        " Keep eating what you're eating.";
     } else {
       verdict = "Hold steady";
-      note = periodSummary + ", right on your " + (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) +
-        " kg/wk target. Log your lifts weekly so future benchmarks can also check training volume.";
+      note = (isMaintenance
+        ? periodSummary + ", right at your maintenance weight."
+        : periodSummary + ", right on your " + (targetRate > 0 ? "+" : "") + targetRate.toFixed(2) + " kg/wk target.") +
+        " Log your lifts weekly so future benchmarks can also check training volume.";
     }
 
     return {
       goalId: goal.id, index: index, date: benchmarkDate,
       windowBStart: windowBStart, windowBEnd: windowBEnd, windowAStart: windowAStart, windowAEnd: windowAEnd,
-      paceCategory: paceCategory, paceRatio: paceRatio, actualRate: actualRate, targetRate: targetRate,
+      paceCategory: paceCategory, paceRatio: paceRatio, isMaintenance: isMaintenance, actualRate: actualRate, targetRate: targetRate,
       strengthAvailable: strengthAvailable, strengthTrendPct: strengthTrendPct, perLift: perLift,
       calorieAdjustment: calorieAdjustment,
       verdict: verdict, note: note, computedAt: todayISO()
@@ -1180,7 +1215,11 @@
       // delegates to computeBenchmark (the same engine behind the Coach tab's Live Status card)
       // instead of running its own separate regression — there is now exactly one pace verdict,
       // computed once, so this banner can never disagree with Coach
-      if (live.paceCategory === "behind") {
+      if (live.isMaintenance && live.paceCategory === "behind") {
+        banners.push({ cls: "behind", text: "Drifting below your maintenance weight — consider eating a bit more to stay flat. See Coach for the full breakdown." });
+      } else if (live.isMaintenance && live.paceCategory === "ahead") {
+        banners.push({ cls: "ahead", text: "Drifting above your maintenance weight — consider easing intake to stay flat. See Coach for the full breakdown." });
+      } else if (live.paceCategory === "behind") {
         banners.push({ cls: "behind", text: "Behind pace — consider adjusting intake toward your target rate. See Coach for the full breakdown." });
       } else if (live.paceCategory === "on") {
         banners.push({ cls: "ontarget", text: "On target, hold current intake. See Coach for the full breakdown." });
@@ -1241,8 +1280,8 @@
     var lines = [];
     lines.push("Window: " + fmtShort(b.windowBStart) + " – " + fmtShort(b.windowBEnd) + " · " +
       (b.actualRate > 0 ? "+" : "") + b.actualRate.toFixed(2) + " kg/wk actual vs " +
-      (b.targetRate > 0 ? "+" : "") + b.targetRate.toFixed(2) + " kg/wk target (" +
-      Math.round(b.paceRatio * 100) + "% of target pace).");
+      (b.isMaintenance ? "a flat (maintenance) target." : (b.targetRate > 0 ? "+" : "") + b.targetRate.toFixed(2) +
+        " kg/wk target (" + Math.round(b.paceRatio * 100) + "% of target pace)."));
 
     var liftLines = LIFTS.map(function (lift) {
       var p = b.perLift[lift];

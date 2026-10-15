@@ -7,7 +7,7 @@ A single-page app for daily weight tracking during a cut or bulk. No account, no
 ## 1. Getting started
 
 1. Open the app. On first run, a **Set up your goal** screen appears.
-2. Choose **Weight Loss** or **Weight Gain**, optionally set a start weight (leave blank to auto-fill from your first logged entry), pick a start date, a duration in weeks, and a target rate (% of bodyweight per week — you choose the number, the app doesn't prescribe one).
+2. Choose **Weight Loss** or **Weight Gain**, optionally set a start weight (leave blank to auto-fill from your first logged entry), pick a start date, a duration in weeks, and a target rate (% of bodyweight per week — you choose the number, the app doesn't prescribe one). **Set the target rate to 0** for a maintenance goal (holding steady after a cut or bulk) — the Coach switches to maintenance-specific logic for this (see below), regardless of whether you picked Weight Loss or Weight Gain as the type.
 3. Tap **Start tracking**. (Or **Skip for now** — you can set a goal later in Settings.)
 
 ## 2. Daily use
@@ -49,6 +49,8 @@ Every card spells out what actually happened — the date range, your observed s
 Below every verdict is a quieter **details line** with the actual receipts: the exact date window used, your actual rate vs. target rate as a percentage ("68% of target pace"), and each lift's individual percent change against the block before it ("Pull-ups +12% · Dips -3% · Squats: not enough data"). This is the reasoning behind the verdict, not just the conclusion — so you can check the math yourself instead of taking the one-line summary on faith.
 
 This works for **any goal length and any benchmark frequency** — a 6-week cut with 4-week benchmarks gets one checkpoint, a 21-week bulk gets five. No setup beyond the one number.
+
+**Maintenance goals (0%/wk target)** use different logic, since "pace" as a ratio doesn't mean anything against a target of zero. Instead the Coach watches for drift away from flat: within about ±0.15 kg/week is **Hold steady**; drifting up means **Eat less** and drifting down means **Eat more** — always in that direction, regardless of whether you set the goal up as "Weight Loss" or "Weight Gain," since at 0% the label is just how you got there, not a direction to keep following. Declining strength on a flat weight trend still correctly triggers **Reduce training volume**, same as any other goal.
 
 **One caveat**: both the live status and your very first scheduled benchmark compare your lifts against the ~4 weeks *before* your goal even started. If you weren't logging lifts yet back then, you'll just get a "not enough strength data" note — you still get the food verdict from your weight trend either way. Start logging lifts as soon as you can, ideally before you start a new cut/bulk, so the earliest checks have something to compare against.
 
