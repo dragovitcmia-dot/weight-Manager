@@ -1130,7 +1130,9 @@
       },
       {
         type: "line",
-        label: "Trend (" + recent21.length + "d, current goal)",
+        label: trendGoal && recent21.length < 21
+          ? "Trend (since goal start, " + recent21.length + "d so far)"
+          : "Trend (most recent 21d)",
         data: trendData,
         borderColor: trendColor,
         backgroundColor: trendColor,
@@ -1181,12 +1183,27 @@
       projected = current7d + reg.slope * daysToEnd;
     }
 
+    // "windowDays" is a ROLLING window cap (at most the last 21 entries), not how long the goal
+    // has existed — on a goal older than that, it stays pinned at 21 even on day 35, 60, whatever.
+    // Putting that number in the stat's TITLE read as a day-counter ("it thinks I've only been
+    // doing this 21 days") rather than what it actually is (a deliberate recency window, same as
+    // it's always been). Keeping the title plain and explaining the window only in the sub-text,
+    // worded as a window rather than an elapsed count, avoids that misreading.
+    var rateSub;
+    if (!goal) {
+      rateSub = "from trend regression";
+    } else if (windowDays < 21) {
+      rateSub = "trend since this goal started (" + windowDays + "d so far)";
+    } else {
+      rateSub = "trend over your most recent 21 days";
+    }
+
     var stats = [];
     stats.push({ label: "7-day average", value: current7d != null ? current7d.toFixed(1) + " kg" : "—" });
     stats.push({
-      label: "Actual rate (" + (windowDays || 0) + "d)",
+      label: "Actual rate",
       value: actualWeeklyRate != null ? (actualWeeklyRate > 0 ? "+" : "") + actualWeeklyRate.toFixed(2) + " kg/wk" : "—",
-      sub: goal ? "trend since this goal started" : "from trend regression"
+      sub: rateSub
     });
     stats.push({
       label: "Target rate",

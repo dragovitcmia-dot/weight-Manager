@@ -18,10 +18,10 @@ A single-page app for daily weight tracking during a cut or bulk. No account, no
 
 ## 3. Reading the dashboard
 
-- **Chart**: gray dots = each day's raw weight. Bold blue line = your 7-day average (the number that actually matters, not daily noise). Dashed line = your trend, labeled with how many days it's actually using.
+- **Chart**: gray dots = each day's raw weight. Bold blue line = your 7-day average (the number that actually matters, not daily noise). Dashed line = your trend, over your most recent 21 days by default.
 - **Stats panel**:
   - *7-day average* — your current smoothed weight.
-  - *Actual rate* — how fast you're actually losing/gaining, from the trend line. This **only ever looks at data from your current goal period onward** — if you just switched from a bulk to a cut, it won't blend in the bulk's trend, even in the first few days. The window shrinks to match (e.g. "Actual rate (5d)" right after starting a new goal) rather than silently reaching backward.
+  - *Actual rate* — how fast you're actually losing/gaining, from the trend line. This **only ever looks at data from your current goal period onward** — if you just switched from a bulk to a cut, it won't blend in the bulk's trend, even in the first few days. It's a rolling window, not a running total of days tracked: once your goal passes 21 days old it stays pinned at "your most recent 21 days" even on day 60 or day 120 — that's deliberately recent momentum, not your whole history. Only in the first 3 weeks of a new goal does the sub-text say "(Nd so far)," shrinking to match however little data exists yet, rather than silently reaching back into a previous goal to fill the gap.
   - *Target rate* — what your goal setup implies, in kg/week.
   - *Days remaining* / *Projected end weight* / *Target end weight* — where you're headed vs. where you set out to go, also computed from the goal-scoped trend above.
 - **Insight banner** (appears once you have 14+ days of data in your current goal period): tells you if you're behind pace, on target, or ahead of pace — and flags a single-day spike as likely water weight, not signal. This uses the exact same calculation as the Coach tab's Current Status card, so the two can never disagree with each other.
