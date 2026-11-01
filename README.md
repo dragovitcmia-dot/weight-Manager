@@ -18,12 +18,12 @@ A single-page app for daily weight tracking during a cut or bulk. No account, no
 
 ## 3. Reading the dashboard
 
-- **Chart**: gray dots = each day's raw weight. Bold blue line = your 7-day average (the number that actually matters, not daily noise). Dashed orange line = your trend over the last 21 days.
+- **Chart**: gray dots = each day's raw weight. Bold blue line = your 7-day average (the number that actually matters, not daily noise). Dashed line = your trend, labeled with how many days it's actually using.
 - **Stats panel**:
   - *7-day average* — your current smoothed weight.
-  - *Actual rate (3wk)* — how fast you're actually losing/gaining, from the trend line.
+  - *Actual rate* — how fast you're actually losing/gaining, from the trend line. This **only ever looks at data from your current goal period onward** — if you just switched from a bulk to a cut, it won't blend in the bulk's trend, even in the first few days. The window shrinks to match (e.g. "Actual rate (5d)" right after starting a new goal) rather than silently reaching backward.
   - *Target rate* — what your goal setup implies, in kg/week.
-  - *Days remaining* / *Projected end weight* / *Target end weight* — where you're headed vs. where you set out to go.
+  - *Days remaining* / *Projected end weight* / *Target end weight* — where you're headed vs. where you set out to go, also computed from the goal-scoped trend above.
 - **Insight banner** (appears once you have 14+ days of data in your current goal period): tells you if you're behind pace, on target, or ahead of pace — and flags a single-day spike as likely water weight, not signal. This uses the exact same calculation as the Coach tab's Current Status card, so the two can never disagree with each other.
 
 ## 4. History
@@ -35,11 +35,10 @@ A single-page app for daily weight tracking during a cut or bulk. No account, no
 
 This is the part that crunches the numbers for you so you don't have to sit down and analyze anything yourself. Tap **Coach** at the bottom to see it, in this order:
 
-- **Current Status (LIVE)**: the top card. Unlike everything else below it, this recalculates fresh every single time you open the tab or log something new — it never waits for 14 days of data or a scheduled checkpoint. Even on day 2 of a brand-new goal it'll show a real verdict (or "Not enough data" if there's truly nothing to go on yet), using whatever you've logged so far. This is your at-a-glance answer to "how am I doing, right now."
-- **Weekly insight banner**: the same behind/on-target/ahead-of-pace note from the Log tab, shown here too for convenience. It's computed by the exact same engine as the card above it, so they always agree.
+- **Current Status (LIVE)**: the top card, and the only one that matters for "what do I do today." Unlike everything else below it, this recalculates fresh every single time you open the tab or log something new — it never waits for 14 days of data or a scheduled checkpoint. Even on day 2 of a brand-new goal it'll show a real verdict (or "Not enough data" if there's truly nothing to go on yet), using whatever you've logged so far, and never reaches back into a *previous* goal's data even if that goal ended yesterday. This is your at-a-glance answer to "how am I doing, right now" — nothing else on this tab is a second opinion; the Log tab's insight banner is the same verdict in one sentence, and everything below Current Status here is historical record, not current instructions.
 - **Weekly Lifts card**: once a week, tap **Log this week** and enter your best set for **Pull-ups**, **Dips**, and **Squats** — reps, added weight (0 if bodyweight-only), and RIR (reps you had left in the tank; 0 = to failure). Re-tapping the same week edits that week's numbers instead of duplicating them.
 - **Strength Trends**: one line graph per lift, plotting your effective load (bodyweight + added weight, scaled by reps and how close to failure you went) across every week you've logged it. A lift you haven't logged yet just shows "not logged yet" instead of an empty chart. This is where you actually *see* your strength progress over time, not just a one-line verdict about it.
-- **Benchmarks**: set "Benchmark every N weeks" when you set up a goal (default 4). Every N weeks, a new **Benchmark** card is added to this history with one plain-language verdict, frozen at the time it was computed (unlike the live card above, these don't change after the fact):
+- **Benchmarks**: a labeled history, not something to act on — each card is explicitly marked as a frozen past checkpoint, with a note pointing back up to Current Status for what's current. Set "Benchmark every N weeks" when you set up a goal (default 4). Every N weeks, a new **Benchmark** card is added to this history with one plain-language verdict, frozen at the time it was computed (unlike the live card above, these don't change after the fact — even if you later edit the benchmark frequency, already-computed cards keep their original label and data):
   - **Eat more** / **Eat less** — your weight trend over that block was off your target pace, in either direction.
   - **Reduce training volume** — your weight trend was right on target (so your food is correct), but your lifts dropped meaningfully over that block anyway. That's a recovery problem, not a food problem.
   - **Hold steady** — on target and your lifts are holding. Keep going.

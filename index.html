@@ -333,11 +333,11 @@
   <!-- ===== Coach tab ===== -->
   <div class="tab-panel hidden" id="tabCoach">
 
-    <!-- Live, continuously-recalculated status — no 14-day or benchmark-interval wait -->
+    <!-- Live, continuously-recalculated status — no 14-day or benchmark-interval wait. This
+         already covers everything the Log tab's short insight banner says (and in more depth),
+         so it is NOT duplicated here — a second, differently-worded summary of the same verdict
+         right below the full one read as two disagreeing opinions instead of one. -->
     <div id="liveStatusCard"></div>
-
-    <!-- Same weekly insight banner shown on the Log tab -->
-    <div id="insightsCoach"></div>
 
     <!-- Weekly strength check-in -->
     <div class="card" id="strengthCard">
@@ -1065,7 +1065,24 @@
     statsCard.style.display = "block";
 
     var mas = movingAverages(entries);
-    var recent21 = mas.slice(-21);
+
+    // The trend regression — which "Actual rate", "Projected end weight", and the dashed trend
+    // line are all derived from — must never reach back before the active goal started, or it
+    // silently blends in a prior goal period's trend (e.g. a bulk's gaining slope bleeding into a
+    // brand-new cut's numbers). Same clamp computeBenchmark already applies to the Coach tab's
+    // verdict, so the two can't show contradictory rates for the same goal.
+    //
+    // Filtering the already-computed `mas` by date isn't enough: each MA value is itself a
+    // trailing 7-day average drawn from the full, unfiltered history, so the first several days
+    // after a goal starts would still have their smoothed values quietly pulled toward the prior
+    // goal's raw weigh-ins. Recomputing the moving average from goal-scoped entries only confines
+    // that trailing window to real data from the current goal — a brand-new goal just gets a
+    // shorter (and honestly so) smoothing window for its first few days, same as Coach's own
+    // engine, which also never crosses the goal boundary.
+    var trendGoal = getActiveGoal();
+    var periodEntries = trendGoal ? entries.filter(function (e) { return e.date >= trendGoal.startDate; }) : entries;
+    var periodMas = trendGoal ? movingAverages(periodEntries) : mas;
+    var recent21 = periodMas.slice(-21);
     var regPoints = recent21.map(function (m, i) { return { x: i, y: m.ma }; });
     var reg = linreg(regPoints);
 
@@ -1113,7 +1130,7 @@
       },
       {
         type: "line",
-        label: "Trend (21d)",
+        label: "Trend (" + recent21.length + "d, current goal)",
         data: trendData,
         borderColor: trendColor,
         backgroundColor: trendColor,
@@ -1143,10 +1160,10 @@
       }
     });
 
-    renderStats(entries, mas, reg);
+    renderStats(entries, mas, reg, recent21.length);
   }
 
-  function renderStats(entries, mas, reg) {
+  function renderStats(entries, mas, reg, windowDays) {
     var grid = document.getElementById("statsGrid");
     var current7d = mas.length ? mas[mas.length - 1].ma : null;
     var actualWeeklyRate = reg ? reg.slope * 7 : null;
@@ -1167,9 +1184,9 @@
     var stats = [];
     stats.push({ label: "7-day average", value: current7d != null ? current7d.toFixed(1) + " kg" : "—" });
     stats.push({
-      label: "Actual rate (3wk)",
+      label: "Actual rate (" + (windowDays || 0) + "d)",
       value: actualWeeklyRate != null ? (actualWeeklyRate > 0 ? "+" : "") + actualWeeklyRate.toFixed(2) + " kg/wk" : "—",
-      sub: "from trend regression"
+      sub: goal ? "trend since this goal started" : "from trend regression"
     });
     stats.push({
       label: "Target rate",
@@ -1246,13 +1263,13 @@
     return banners;
   }
 
+  // Log tab only — the Coach tab's Live Status card already covers this in full depth, so
+  // showing a second, shorter summary of the same verdict there would read as a separate opinion
   function renderInsights(live) {
     var html = computeInsightBanners(live).map(function (b) {
       return '<div class="insight ' + b.cls + '">' + b.text + '</div>';
     }).join("");
     document.getElementById("insights").innerHTML = html;
-    var coachEl = document.getElementById("insightsCoach");
-    if (coachEl) coachEl.innerHTML = html;
   }
 
   // shared formatting for both a historical "Week N Benchmark" card and the live status card —
@@ -1320,10 +1337,12 @@
     // labeled by weeks actually elapsed since the goal started, not index * current frequency —
     // that index/frequency math goes stale (and mislabels frozen, already-computed cards) the
     // moment the goal's benchmark frequency is edited after some benchmarks already exist
-    container.innerHTML = '<h2 class="section-title">Benchmarks</h2>' + mine.map(function (b) {
-      var weeksElapsed = Math.round(daysBetween(goal.startDate, b.date) / 7);
-      return benchmarkCardHTML(b, "Week " + weeksElapsed + " Benchmark", false);
-    }).join("");
+    container.innerHTML = '<h2 class="section-title">Benchmarks</h2>' +
+      '<p class="hint" style="margin-top:-6px;">Past checkpoints, frozen at the time each was computed — for your record, not current instructions. For what to do right now, see Current Status above.</p>' +
+      mine.map(function (b) {
+        var weeksElapsed = Math.round(daysBetween(goal.startDate, b.date) / 7);
+        return benchmarkCardHTML(b, "Week " + weeksElapsed + " Benchmark", false);
+      }).join("");
   }
 
   function renderStrengthCard() {
